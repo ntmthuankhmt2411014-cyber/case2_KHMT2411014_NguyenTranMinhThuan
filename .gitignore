@@ -1,0 +1,11 @@
+api/node_modules/
+api/.env
+.env
+
+# Flutter
+task_manager/.dart_tool/
+task_manager/.flutter-plugins
+task_manager/.flutter-plugins-dependencies
+task_manager/build/
+task_manager/.pub-cache/
+task_manager/.pub/

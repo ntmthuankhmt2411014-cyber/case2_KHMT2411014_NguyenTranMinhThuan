@@ -3,11 +3,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/task.dart';
+import '../utils/constants.dart';
 
 class TaskApiService {
-  // 10.0.2.2 = máy tính (host) nhìn từ Android Emulator.
-  // Nếu chạy trên điện thoại thật, đổi thành IP máy tính, ví dụ 192.168.1.10
-  static const String baseUrl = 'http://192.168.0.200:3000/api';
+  String get baseUrl => AppConstants.baseUrl;
 
   Future<List<Task>> getTasks() async {
     final response = await http

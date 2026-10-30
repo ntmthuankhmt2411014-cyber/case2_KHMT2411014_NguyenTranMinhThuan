@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../services/task_api_service.dart';
+import 'profile/profile_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
   const TaskListScreen({super.key});
@@ -58,6 +59,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Tải lại',
             onPressed: _reload,
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Cá nhân & Tài khoản',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
           ),
         ],
       ),

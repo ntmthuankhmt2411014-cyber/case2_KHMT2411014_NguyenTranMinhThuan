@@ -1,16 +1,16 @@
 const express = require('express');
-const Task = require('../models/task.model');
-
 const router = express.Router();
+const taskController = require('../controllers/task.controller');
+const authMiddleware = require('../middleware/auth.middleware');
 
-router.get('/', async (req, res) => {
-  try {
-    const tasks = await Task.find();
-    res.status(200).json(tasks);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Không thể lấy danh sách công việc' });
-  }
-});
+// Tất cả route đều yêu cầu xác thực
+router.use(authMiddleware);
+
+router.post('/', taskController.createTask);
+router.get('/', taskController.getTasks);
+router.get('/:id', taskController.getTaskById);
+router.put('/:id', taskController.updateTask);
+router.patch('/:id/status', taskController.updateTaskStatus);
+router.delete('/:id', taskController.deleteTask);
 
 module.exports = router;

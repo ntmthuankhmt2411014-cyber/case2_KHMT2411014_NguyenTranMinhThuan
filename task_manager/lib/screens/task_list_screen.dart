@@ -21,6 +21,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   String? _error;
 
   // Bộ lọc hiện tại
+  String? _filterScope; // null (Tất cả), 'created' (Tôi tạo), 'assigned' (Được giao)
   String? _filterStatus;
   String? _filterPriority;
   String _searchQuery = '';
@@ -49,6 +50,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
     try {
       final tasks = await _apiService.getTasks(
+        scope: _filterScope,
         status: _filterStatus,
         priority: _filterPriority,
         q: _searchQuery.isNotEmpty ? _searchQuery : null,
@@ -168,41 +170,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
-  // Xóa công việc
-  Future<void> _deleteTask(Task task) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Xác nhận xóa'),
-        content: Text('Bạn có chắc chắn muốn xóa công việc "${task.title}" không?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('Xóa'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    final result = await _apiService.deleteTask(task.id);
-    if (!mounted) return;
-
-    if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã xóa công việc'), backgroundColor: Colors.green),
-      );
-      _loadTasks();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['message'] ?? 'Xóa thất bại'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
+  // Hộp thoại Sắp xếp
   void _showSortDialog() {
     showDialog(
       context: context,
@@ -211,35 +179,111 @@ class _TaskListScreenState extends State<TaskListScreen> {
         children: [
           SimpleDialogOption(
             onPressed: () {
-              setState(() { _sortBy = 'createdAt'; _sortOrder = 'desc'; });
+              setState(() {
+                _sortBy = 'createdAt';
+                _sortOrder = 'desc';
+              });
               Navigator.pop(ctx);
               _loadTasks();
             },
-            child: Text('Mới nhất', style: TextStyle(fontWeight: _sortBy == 'createdAt' && _sortOrder == 'desc' ? FontWeight.bold : FontWeight.normal)),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.schedule,
+                  size: 20,
+                  color: _sortBy == 'createdAt' && _sortOrder == 'desc' ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Mới nhất (Mặc định)',
+                  style: TextStyle(
+                    fontWeight: _sortBy == 'createdAt' && _sortOrder == 'desc' ? FontWeight.bold : FontWeight.normal,
+                    color: _sortBy == 'createdAt' && _sortOrder == 'desc' ? Colors.blue : null,
+                  ),
+                ),
+              ],
+            ),
           ),
           SimpleDialogOption(
             onPressed: () {
-              setState(() { _sortBy = 'createdAt'; _sortOrder = 'asc'; });
+              setState(() {
+                _sortBy = 'createdAt';
+                _sortOrder = 'asc';
+              });
               Navigator.pop(ctx);
               _loadTasks();
             },
-            child: Text('Cũ nhất', style: TextStyle(fontWeight: _sortBy == 'createdAt' && _sortOrder == 'asc' ? FontWeight.bold : FontWeight.normal)),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 20,
+                  color: _sortBy == 'createdAt' && _sortOrder == 'asc' ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Cũ nhất',
+                  style: TextStyle(
+                    fontWeight: _sortBy == 'createdAt' && _sortOrder == 'asc' ? FontWeight.bold : FontWeight.normal,
+                    color: _sortBy == 'createdAt' && _sortOrder == 'asc' ? Colors.blue : null,
+                  ),
+                ),
+              ],
+            ),
           ),
           SimpleDialogOption(
             onPressed: () {
-              setState(() { _sortBy = 'dueDate'; _sortOrder = 'asc'; });
+              setState(() {
+                _sortBy = 'dueDate';
+                _sortOrder = 'asc';
+              });
               Navigator.pop(ctx);
               _loadTasks();
             },
-            child: Text('Hạn gần nhất', style: TextStyle(fontWeight: _sortBy == 'dueDate' ? FontWeight.bold : FontWeight.normal)),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.event,
+                  size: 20,
+                  color: _sortBy == 'dueDate' ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Hạn gần nhất',
+                  style: TextStyle(
+                    fontWeight: _sortBy == 'dueDate' ? FontWeight.bold : FontWeight.normal,
+                    color: _sortBy == 'dueDate' ? Colors.blue : null,
+                  ),
+                ),
+              ],
+            ),
           ),
           SimpleDialogOption(
             onPressed: () {
-              setState(() { _sortBy = 'priority'; _sortOrder = 'desc'; });
+              setState(() {
+                _sortBy = 'priority';
+                _sortOrder = 'desc';
+              });
               Navigator.pop(ctx);
               _loadTasks();
             },
-            child: Text('Ưu tiên cao nhất', style: TextStyle(fontWeight: _sortBy == 'priority' ? FontWeight.bold : FontWeight.normal)),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.flag,
+                  size: 20,
+                  color: _sortBy == 'priority' ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Ưu tiên cao nhất',
+                  style: TextStyle(
+                    fontWeight: _sortBy == 'priority' ? FontWeight.bold : FontWeight.normal,
+                    color: _sortBy == 'priority' ? Colors.blue : null,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -250,7 +294,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Công việc của tôi'),
+        title: const Text('Danh sách công việc'),
         actions: [
           IconButton(
             icon: const Icon(Icons.sort),
@@ -278,11 +322,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
         children: [
           // Thanh tìm kiếm
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Tìm kiếm công việc...',
+                hintText: 'Tìm kiếm theo tên hoặc mô tả...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -304,14 +348,43 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
           ),
 
+          // Bộ lọc phân loại phạm vi (Scope)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<String?>(
+                    segments: const [
+                      ButtonSegment<String?>(value: null, label: Text('Tất cả')),
+                      ButtonSegment<String?>(value: 'created', label: Text('Tôi tạo')),
+                      ButtonSegment<String?>(value: 'assigned', label: Text('Được giao')),
+                    ],
+                    selected: {_filterScope},
+                    onSelectionChanged: (newSelection) {
+                      setState(() => _filterScope = newSelection.first);
+                      _loadTasks();
+                    },
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
           // Chip lọc trạng thái & ưu tiên
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Row(
               children: [
-                // Lọc trạng thái
-                _buildFilterChip('Tất cả', _filterStatus == null, () {
+                // Trạng thái
+                _buildFilterChip('Tất cả TT', _filterStatus == null, () {
                   setState(() => _filterStatus = null);
                   _loadTasks();
                 }),
@@ -331,9 +404,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   _loadTasks();
                 }, color: Colors.green),
                 const SizedBox(width: 12),
-                // Lọc ưu tiên
-                Container(width: 1, height: 24, color: Colors.grey.shade300),
+                // Đường phân cách
+                Container(width: 1, height: 22, color: Colors.grey.shade300),
                 const SizedBox(width: 12),
+                // Ưu tiên
                 _buildFilterChip('🔴 Cao', _filterPriority == 'High', () {
                   setState(() => _filterPriority = _filterPriority == 'High' ? null : 'High');
                   _loadTasks();
@@ -367,7 +441,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           if (result == true) _loadTasks();
         },
         icon: const Icon(Icons.add),
-        label: const Text('Thêm'),
+        label: const Text('Thêm việc'),
       ),
     );
   }
@@ -423,9 +497,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
             Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 12),
             Text(
-              _filterStatus != null || _filterPriority != null || _searchQuery.isNotEmpty
+              _filterScope != null || _filterStatus != null || _filterPriority != null || _searchQuery.isNotEmpty
                   ? 'Không tìm thấy công việc phù hợp'
-                  : 'Chưa có công việc nào.\nBấm + để tạo công việc mới!',
+                  : 'Chưa có công việc nào.\nBấm + Thêm việc để bắt đầu!',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
             ),
@@ -453,38 +527,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
         DateTime.tryParse(task.dueDate!)?.isBefore(DateTime.now()) == true &&
         task.status != 'Completed';
 
-    return Dismissible(
-      key: Key(task.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        color: Colors.red,
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      confirmDismiss: (direction) async {
-        _deleteTask(task);
-        return false; // Xóa qua dialog xác nhận, không dùng dismiss thật
-      },
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        elevation: 1.5,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () {
-            // Sẽ mở TaskDetailScreen ở bước sau
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Icon trạng thái (bấm để chuyển nhanh)
-                GestureDetector(
-                  onTap: () => _quickUpdateStatus(task),
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 2, right: 10),
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () {
+          // Sẽ chuyển đến TaskDetailScreen ở Bước 3
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icon trạng thái (bấm để chuyển đổi nhanh)
+              GestureDetector(
+                onTap: () => _quickUpdateStatus(task),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 10),
+                  child: Tooltip(
+                    message: 'Nhấn để đổi trạng thái',
                     child: Icon(
                       _statusIcon(task.status),
                       color: _statusColor(task.status),
@@ -492,106 +555,113 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     ),
                   ),
                 ),
+              ),
 
-                // Nội dung
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        task.title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          decoration: task.status == 'Completed' ? TextDecoration.lineThrough : null,
-                          color: task.status == 'Completed' ? Colors.grey : null,
-                        ),
+              // Nội dung công việc
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        decoration: task.status == 'Completed' ? TextDecoration.lineThrough : null,
+                        color: task.status == 'Completed' ? Colors.grey : null,
                       ),
-                      if (task.description.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          task.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                    if (task.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        task.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        // Badge trạng thái
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _statusColor(task.status).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _statusLabel(task.status),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _statusColor(task.status),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ],
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          // Badge trạng thái
+
+                        // Badge danh mục
+                        if (task.category.isNotEmpty && task.category != 'Other')
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: _statusColor(task.status).withValues(alpha: 0.15),
+                              color: Colors.purple.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              _statusLabel(task.status),
-                              style: TextStyle(fontSize: 11, color: _statusColor(task.status), fontWeight: FontWeight.w600),
+                              task.category,
+                              style: const TextStyle(fontSize: 11, color: Colors.purple),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          // Badge danh mục
-                          if (task.category.isNotEmpty && task.category != 'Other')
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.purple.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                task.category,
-                                style: const TextStyle(fontSize: 11, color: Colors.purple),
-                              ),
-                            ),
-                          const Spacer(),
-                          // Hạn hoàn thành
-                          if (dueDateStr.isNotEmpty)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.event,
-                                  size: 14,
-                                  color: isOverdue ? Colors.red : Colors.grey,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  dueDateStr,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isOverdue ? Colors.red : Colors.grey,
-                                    fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
 
-                // Badge ưu tiên
-                Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _priorityColor(task.priority).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _priorityLabel(task.priority),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: _priorityColor(task.priority),
-                      fontWeight: FontWeight.bold,
+                        // Hạn hoàn thành
+                        if (dueDateStr.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.event,
+                                size: 14,
+                                color: isOverdue ? Colors.red : Colors.grey,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                dueDateStr,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isOverdue ? Colors.red : Colors.grey,
+                                  fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
+                  ],
+                ),
+              ),
+
+              // Badge mức độ ưu tiên
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _priorityColor(task.priority).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _priorityLabel(task.priority),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _priorityColor(task.priority),
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

@@ -18,6 +18,7 @@ exports.createTask = async (req, res) => {
       startDate: startDate || null,
       dueDate: dueDate || null,
       createdBy: req.user._id,
+      assigneeIds: [],
     });
 
     const populated = await newTask.populate('createdBy', 'fullName email');
@@ -32,30 +33,76 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2. Lấy danh sách công việc (có lọc, tìm kiếm, sắp xếp)
+// 2. Lấy danh sách công việc (có phân loại scope, lọc status/priority/category, tìm kiếm q, sắp xếp)
 exports.getTasks = async (req, res) => {
   try {
-    const { status, priority, category, q, sortBy, order } = req.query;
+    const { scope, status, priority, category, q, sortBy, order } = req.query;
 
-    const filter = { createdBy: req.user._id };
+    let filter = {};
 
-    if (status) filter.status = status;
-    if (priority) filter.priority = priority;
-    if (category) filter.category = category;
-
-    // Tìm kiếm theo tiêu đề hoặc mô tả
-    if (q && q.trim()) {
-      const regex = new RegExp(q.trim(), 'i');
-      filter.$or = [{ title: regex }, { description: regex }];
+    // Phân loại phạm vi công việc
+    if (scope === 'created') {
+      filter.createdBy = req.user._id;
+    } else if (scope === 'assigned') {
+      filter.assigneeIds = req.user._id;
+    } else {
+      // Mặc định: Việc tôi tạo HOẶC việc tôi được giao
+      filter.$or = [
+        { createdBy: req.user._id },
+        { assigneeIds: req.user._id },
+      ];
     }
 
-    // Sắp xếp: mặc định theo ngày tạo mới nhất
+    // Lọc theo trạng thái
+    if (status) {
+      filter.status = status;
+    }
+
+    // Lọc theo mức độ ưu tiên
+    if (priority) {
+      filter.priority = priority;
+    }
+
+    // Lọc theo danh mục
+    if (category) {
+      filter.category = category;
+    }
+
+    // Tìm kiếm theo tên hoặc mô tả
+    if (q && q.trim()) {
+      const searchRegex = new RegExp(q.trim(), 'i');
+      if (filter.$or) {
+        // Kết hợp điều kiện người dùng với tìm kiếm
+        filter = {
+          $and: [
+            { $or: filter.$or },
+            { $or: [{ title: searchRegex }, { description: searchRegex }] },
+          ],
+        };
+      } else {
+        filter.$or = [{ title: searchRegex }, { description: searchRegex }];
+      }
+    }
+
+    // Xác định thứ tự sắp xếp
     const sortField = sortBy || 'createdAt';
     const sortOrder = order === 'asc' ? 1 : -1;
 
-    const tasks = await Task.find(filter)
+    let tasks = await Task.find(filter)
       .populate('createdBy', 'fullName email')
+      .populate('assigneeIds', 'fullName email')
+      .populate('primaryAssigneeId', 'fullName email')
       .sort({ [sortField]: sortOrder });
+
+    // Xử lý sắp xếp theo mức độ ưu tiên hợp lý (High > Medium > Low)
+    if (sortBy === 'priority') {
+      const priorityWeights = { High: 3, Medium: 2, Low: 1 };
+      tasks.sort((a, b) => {
+        const weightA = priorityWeights[a.priority] || 0;
+        const weightB = priorityWeights[b.priority] || 0;
+        return order === 'asc' ? weightA - weightB : weightB - weightA;
+      });
+    }
 
     return res.status(200).json(tasks);
   } catch (error) {
@@ -68,7 +115,9 @@ exports.getTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
-      .populate('createdBy', 'fullName email');
+      .populate('createdBy', 'fullName email')
+      .populate('assigneeIds', 'fullName email')
+      .populate('primaryAssigneeId', 'fullName email');
 
     if (!task) {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
@@ -127,7 +176,11 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    if (task.createdBy.toString() !== req.user._id.toString()) {
+    // Người tạo hoặc người được giao có thể cập nhật trạng thái
+    const isOwner = task.createdBy.toString() === req.user._id.toString();
+    const isAssignee = task.assigneeIds && task.assigneeIds.some(id => id.toString() === req.user._id.toString());
+
+    if (!isOwner && !isAssignee) {
       return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái công việc này' });
     }
 

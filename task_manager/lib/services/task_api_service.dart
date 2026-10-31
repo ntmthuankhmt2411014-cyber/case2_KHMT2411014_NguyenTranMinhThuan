@@ -22,8 +22,9 @@ class TaskApiService {
     };
   }
 
-  // 1. Lấy danh sách công việc (có filter, search, sort)
+  // 1. Lấy danh sách công việc (có scope, filter, search, sort)
   Future<List<Task>> getTasks({
+    String? scope,
     String? status,
     String? priority,
     String? category,
@@ -32,6 +33,7 @@ class TaskApiService {
     String? order,
   }) async {
     final queryParams = <String, String>{};
+    if (scope != null && scope.isNotEmpty) queryParams['scope'] = scope;
     if (status != null && status.isNotEmpty) queryParams['status'] = status;
     if (priority != null && priority.isNotEmpty) queryParams['priority'] = priority;
     if (category != null && category.isNotEmpty) queryParams['category'] = category;

@@ -115,12 +115,20 @@ exports.getTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
-      .populate('createdBy', 'fullName email')
-      .populate('assigneeIds', 'fullName email')
-      .populate('primaryAssigneeId', 'fullName email');
+      .populate('createdBy', 'fullName email avatarUrl')
+      .populate('assigneeIds', 'fullName email avatarUrl')
+      .populate('primaryAssigneeId', 'fullName email avatarUrl');
 
     if (!task) {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
+    }
+
+    // Kiểm tra quyền truy cập: Người tạo hoặc người được giao
+    const isCreator = task.createdBy && task.createdBy._id.toString() === req.user._id.toString();
+    const isAssignee = task.assigneeIds && task.assigneeIds.some(u => u._id.toString() === req.user._id.toString());
+
+    if (!isCreator && !isAssignee) {
+      return res.status(403).json({ message: 'Bạn không có quyền truy cập công việc này' });
     }
 
     return res.status(200).json(task);

@@ -1,3 +1,23 @@
+class TaskAssignee {
+  final String id;
+  final String fullName;
+  final String email;
+
+  TaskAssignee({
+    required this.id,
+    required this.fullName,
+    required this.email,
+  });
+
+  factory TaskAssignee.fromJson(Map<String, dynamic> json) {
+    return TaskAssignee(
+      id: json['_id']?.toString() ?? '',
+      fullName: json['fullName'] ?? '',
+      email: json['email'] ?? '',
+    );
+  }
+}
+
 class Task {
   final String id;
   final String title;
@@ -9,7 +29,12 @@ class Task {
   final String? dueDate;
   final String? createdBy;
   final String? createdByName;
+  final String? createdByEmail;
+  final String? primaryAssigneeId;
+  final String? primaryAssigneeName;
+  final List<TaskAssignee> assignees;
   final String? createdAt;
+  final String? updatedAt;
 
   Task({
     required this.id,
@@ -22,19 +47,45 @@ class Task {
     this.dueDate,
     this.createdBy,
     this.createdByName,
+    this.createdByEmail,
+    this.primaryAssigneeId,
+    this.primaryAssigneeName,
+    this.assignees = const [],
     this.createdAt,
+    this.updatedAt,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
     String? createdById;
     String? createdByName;
+    String? createdByEmail;
 
     final cb = json['createdBy'];
     if (cb is Map<String, dynamic>) {
       createdById = cb['_id']?.toString();
       createdByName = cb['fullName']?.toString();
+      createdByEmail = cb['email']?.toString();
     } else if (cb is String) {
       createdById = cb;
+    }
+
+    String? primaryAssigneeId;
+    String? primaryAssigneeName;
+    final pa = json['primaryAssigneeId'];
+    if (pa is Map<String, dynamic>) {
+      primaryAssigneeId = pa['_id']?.toString();
+      primaryAssigneeName = pa['fullName']?.toString();
+    } else if (pa is String) {
+      primaryAssigneeId = pa;
+    }
+
+    List<TaskAssignee> assigneesList = [];
+    if (json['assigneeIds'] is List) {
+      for (var item in json['assigneeIds']) {
+        if (item is Map<String, dynamic>) {
+          assigneesList.add(TaskAssignee.fromJson(item));
+        }
+      }
     }
 
     return Task(
@@ -48,7 +99,12 @@ class Task {
       dueDate: json['dueDate']?.toString(),
       createdBy: createdById,
       createdByName: createdByName,
+      createdByEmail: createdByEmail,
+      primaryAssigneeId: primaryAssigneeId,
+      primaryAssigneeName: primaryAssigneeName,
+      assignees: assigneesList,
       createdAt: json['createdAt']?.toString(),
+      updatedAt: json['updatedAt']?.toString(),
     );
   }
 

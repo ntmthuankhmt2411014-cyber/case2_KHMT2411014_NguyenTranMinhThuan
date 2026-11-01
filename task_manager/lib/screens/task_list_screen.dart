@@ -5,6 +5,7 @@ import '../models/task.dart';
 import '../services/task_api_service.dart';
 import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
+import 'tasks/task_detail_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
   const TaskListScreen({super.key});
@@ -533,8 +534,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () {
-          // Sẽ chuyển đến TaskDetailScreen ở Bước 3
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TaskDetailScreen(taskId: task.id),
+            ),
+          );
+          _loadTasks();
         },
         child: Padding(
           padding: const EdgeInsets.all(12),

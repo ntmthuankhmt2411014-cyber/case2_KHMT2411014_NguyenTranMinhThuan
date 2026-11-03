@@ -1,4 +1,19 @@
+const mongoose = require('mongoose');
 const Task = require('../models/task.model');
+const TaskShare = require('../models/taskShare.model');
+
+async function getSharedTaskIds(userId) {
+  const shares = await TaskShare.find({ userId }).select('taskId');
+  return shares.map((share) => share.taskId);
+}
+
+function userCanAccessTask(task, userId) {
+  const uid = userId.toString();
+  const isCreator = task.createdBy && task.createdBy._id.toString() === uid;
+  const isAssignee =
+    task.assigneeIds && task.assigneeIds.some((u) => u._id.toString() === uid);
+  return { isCreator, isAssignee };
+}
 
 // 1. Tạo công việc mới
 exports.createTask = async (req, res) => {
@@ -33,56 +48,59 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2. Lấy danh sách công việc (có phân loại scope, lọc status/priority/category, tìm kiếm q, sắp xếp)
+// 2. Lấy danh sách công việc (scope, lọc status/priority/assigneeId, tìm kiếm q, sắp xếp)
 exports.getTasks = async (req, res) => {
   try {
-    const { scope, status, priority, category, q, sortBy, order } = req.query;
+    const { scope, status, priority, category, q, sortBy, order, assigneeId } = req.query;
+    const userId = req.user._id;
+    const sharedTaskIds = await getSharedTaskIds(userId);
+    const conditions = [];
 
-    let filter = {};
-
-    // Phân loại phạm vi công việc
+    // Phân loại phạm vi: created | assigned | shared | mặc định (cả ba)
     if (scope === 'created') {
-      filter.createdBy = req.user._id;
+      conditions.push({ createdBy: userId });
     } else if (scope === 'assigned') {
-      filter.assigneeIds = req.user._id;
+      conditions.push({ assigneeIds: userId });
+    } else if (scope === 'shared') {
+      conditions.push({ _id: { $in: sharedTaskIds } });
     } else {
-      // Mặc định: Việc tôi tạo HOẶC việc tôi được giao
-      filter.$or = [
-        { createdBy: req.user._id },
-        { assigneeIds: req.user._id },
-      ];
+      conditions.push({
+        $or: [
+          { createdBy: userId },
+          { assigneeIds: userId },
+          { _id: { $in: sharedTaskIds } },
+        ],
+      });
     }
 
-    // Lọc theo trạng thái
     if (status) {
-      filter.status = status;
+      conditions.push({ status });
     }
-
-    // Lọc theo mức độ ưu tiên
     if (priority) {
-      filter.priority = priority;
+      conditions.push({ priority });
     }
-
-    // Lọc theo danh mục
     if (category) {
-      filter.category = category;
+      conditions.push({ category });
     }
 
-    // Tìm kiếm theo tên hoặc mô tả
+    if (assigneeId) {
+      if (!mongoose.Types.ObjectId.isValid(assigneeId)) {
+        return res.status(400).json({ message: 'assigneeId không hợp lệ' });
+      }
+      const assigneeObjectId = new mongoose.Types.ObjectId(assigneeId);
+      conditions.push({
+        $or: [{ assigneeIds: assigneeObjectId }, { primaryAssigneeId: assigneeObjectId }],
+      });
+    }
+
     if (q && q.trim()) {
       const searchRegex = new RegExp(q.trim(), 'i');
-      if (filter.$or) {
-        // Kết hợp điều kiện người dùng với tìm kiếm
-        filter = {
-          $and: [
-            { $or: filter.$or },
-            { $or: [{ title: searchRegex }, { description: searchRegex }] },
-          ],
-        };
-      } else {
-        filter.$or = [{ title: searchRegex }, { description: searchRegex }];
-      }
+      conditions.push({
+        $or: [{ title: searchRegex }, { description: searchRegex }],
+      });
     }
+
+    const filter = conditions.length === 1 ? conditions[0] : { $and: conditions };
 
     // Xác định thứ tự sắp xếp
     const sortField = sortBy || 'createdAt';
@@ -123,11 +141,10 @@ exports.getTaskById = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    // Kiểm tra quyền truy cập: Người tạo hoặc người được giao
-    const isCreator = task.createdBy && task.createdBy._id.toString() === req.user._id.toString();
-    const isAssignee = task.assigneeIds && task.assigneeIds.some(u => u._id.toString() === req.user._id.toString());
+    const { isCreator, isAssignee } = userCanAccessTask(task, req.user._id);
+    const isShared = await TaskShare.exists({ taskId: task._id, userId: req.user._id });
 
-    if (!isCreator && !isAssignee) {
+    if (!isCreator && !isAssignee && !isShared) {
       return res.status(403).json({ message: 'Bạn không có quyền truy cập công việc này' });
     }
 

@@ -9,3 +9,6 @@ task_manager/.flutter-plugins-dependencies
 task_manager/build/
 task_manager/.pub-cache/
 task_manager/.pub/
+
+#Documents
+docs/

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/task.dart';
+import '../models/user.dart';
 import '../services/task_api_service.dart';
+import '../services/user_service.dart';
 import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
 import 'tasks/task_detail_screen.dart';
@@ -16,15 +18,17 @@ class TaskListScreen extends StatefulWidget {
 
 class _TaskListScreenState extends State<TaskListScreen> {
   final TaskApiService _apiService = TaskApiService();
+  final UserService _userService = UserService();
 
   List<Task> _tasks = [];
   bool _isLoading = true;
   String? _error;
 
   // Bộ lọc hiện tại
-  String? _filterScope; // null (Tất cả), 'created' (Tôi tạo), 'assigned' (Được giao)
+  String? _filterScope; // null (Tất cả), created, assigned, shared
   String? _filterStatus;
   String? _filterPriority;
+  User? _filterAssignee;
   String _searchQuery = '';
   String _sortBy = 'createdAt';
   String _sortOrder = 'desc';
@@ -57,6 +61,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
         q: _searchQuery.isNotEmpty ? _searchQuery : null,
         sortBy: _sortBy,
         order: _sortOrder,
+        assigneeId: _filterAssignee?.id,
       );
       setState(() {
         _tasks = tasks;
@@ -169,6 +174,108 @@ class _TaskListScreenState extends State<TaskListScreen> {
         ),
       );
     }
+  }
+
+  // Chọn người phụ trách để lọc danh sách (GET /users/search)
+  void _showAssigneeFilterDialog() {
+    final searchController = TextEditingController();
+    List<User> results = [];
+    bool searching = false;
+    String? searchError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> runSearch(String q) async {
+              setDialogState(() {
+                searching = true;
+                searchError = null;
+              });
+              try {
+                final users = await _userService.searchUsers(q);
+                setDialogState(() {
+                  results = users;
+                  searching = false;
+                });
+              } catch (e) {
+                setDialogState(() {
+                  searchError = e.toString();
+                  searching = false;
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Lọc theo người phụ trách'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        hintText: 'Nhập tên hoặc email rồi Enter',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (val) => runSearch(val),
+                    ),
+                    const SizedBox(height: 12),
+                    if (searching) const CircularProgressIndicator(),
+                    if (searchError != null)
+                      Text(searchError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    if (!searching && results.isEmpty && searchController.text.trim().isNotEmpty)
+                      const Text('Không tìm thấy người dùng'),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: results.length,
+                        itemBuilder: (context, index) {
+                          final user = results[index];
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              child: Text(
+                                user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : '?',
+                              ),
+                            ),
+                            title: Text(user.fullName),
+                            subtitle: Text(user.email),
+                            onTap: () {
+                              setState(() => _filterAssignee = user);
+                              Navigator.pop(ctx);
+                              _loadTasks();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    setState(() => _filterAssignee = null);
+                    Navigator.pop(ctx);
+                    _loadTasks();
+                  },
+                  child: const Text('Bỏ lọc'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Đóng'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // Hộp thoại Sắp xếp
@@ -349,29 +456,31 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
           ),
 
-          // Bộ lọc phân loại phạm vi (Scope)
-          Padding(
+          // Phạm vi: tất cả / tôi tạo / được giao / được chia sẻ
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             child: Row(
               children: [
-                Expanded(
-                  child: SegmentedButton<String?>(
-                    segments: const [
-                      ButtonSegment<String?>(value: null, label: Text('Tất cả')),
-                      ButtonSegment<String?>(value: 'created', label: Text('Tôi tạo')),
-                      ButtonSegment<String?>(value: 'assigned', label: Text('Được giao')),
-                    ],
-                    selected: {_filterScope},
-                    onSelectionChanged: (newSelection) {
-                      setState(() => _filterScope = newSelection.first);
-                      _loadTasks();
-                    },
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ),
+                _buildFilterChip('Tất cả', _filterScope == null, () {
+                  setState(() => _filterScope = null);
+                  _loadTasks();
+                }),
+                const SizedBox(width: 6),
+                _buildFilterChip('Tôi tạo', _filterScope == 'created', () {
+                  setState(() => _filterScope = 'created');
+                  _loadTasks();
+                }),
+                const SizedBox(width: 6),
+                _buildFilterChip('Được giao', _filterScope == 'assigned', () {
+                  setState(() => _filterScope = 'assigned');
+                  _loadTasks();
+                }),
+                const SizedBox(width: 6),
+                _buildFilterChip('Chia sẻ', _filterScope == 'shared', () {
+                  setState(() => _filterScope = 'shared');
+                  _loadTasks();
+                }),
               ],
             ),
           ),
@@ -423,6 +532,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   setState(() => _filterPriority = _filterPriority == 'Low' ? null : 'Low');
                   _loadTasks();
                 }, color: Colors.green),
+                const SizedBox(width: 12),
+                Container(width: 1, height: 22, color: Colors.grey.shade300),
+                const SizedBox(width: 12),
+                _buildFilterChip(
+                  _filterAssignee == null
+                      ? 'Người phụ trách'
+                      : _filterAssignee!.fullName,
+                  _filterAssignee != null,
+                  _showAssigneeFilterDialog,
+                  color: Colors.indigo,
+                ),
+                if (_filterAssignee != null) ...[
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _filterAssignee = null);
+                      _loadTasks();
+                    },
+                    child: const Icon(Icons.close, size: 18, color: Colors.grey),
+                  ),
+                ],
               ],
             ),
           ),
@@ -498,7 +628,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
             Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 12),
             Text(
-              _filterScope != null || _filterStatus != null || _filterPriority != null || _searchQuery.isNotEmpty
+              _filterScope != null ||
+                      _filterStatus != null ||
+                      _filterPriority != null ||
+                      _filterAssignee != null ||
+                      _searchQuery.isNotEmpty
                   ? 'Không tìm thấy công việc phù hợp'
                   : 'Chưa có công việc nào.\nBấm + Thêm việc để bắt đầu!',
               textAlign: TextAlign.center,

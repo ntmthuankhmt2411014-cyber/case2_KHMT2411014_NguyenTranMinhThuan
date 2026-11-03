@@ -31,6 +31,7 @@ class TaskApiService {
     String? q,
     String? sortBy,
     String? order,
+    String? assigneeId,
   }) async {
     final queryParams = <String, String>{};
     if (scope != null && scope.isNotEmpty) queryParams['scope'] = scope;
@@ -40,6 +41,7 @@ class TaskApiService {
     if (q != null && q.isNotEmpty) queryParams['q'] = q;
     if (sortBy != null && sortBy.isNotEmpty) queryParams['sortBy'] = sortBy;
     if (order != null && order.isNotEmpty) queryParams['order'] = order;
+    if (assigneeId != null && assigneeId.isNotEmpty) queryParams['assigneeId'] = assigneeId;
 
     final uri = Uri.parse('$baseUrl/tasks').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
 

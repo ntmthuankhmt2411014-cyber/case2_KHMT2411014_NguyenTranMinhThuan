@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/task.dart';
-import '../models/user.dart';
+import '../services/auth_service.dart';
 import '../services/task_api_service.dart';
-import '../services/user_service.dart';
 import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
 import 'tasks/task_detail_screen.dart';
@@ -18,33 +17,71 @@ class TaskListScreen extends StatefulWidget {
 
 class _TaskListScreenState extends State<TaskListScreen> {
   final TaskApiService _apiService = TaskApiService();
-  final UserService _userService = UserService();
+  final AuthService _authService = AuthService();
 
   List<Task> _tasks = [];
   bool _isLoading = true;
   String? _error;
 
-  // Bộ lọc hiện tại
-  String? _filterScope; // null (Tất cả), created, assigned, shared
+  // Bộ lọc hiện tại (null = "Tất cả")
+  String? _filterScope; // created, assigned, shared
+  String? _filterCreatorId;
   String? _filterStatus;
   String? _filterPriority;
-  User? _filterAssignee;
+  String? _dueFilter; // overdue, today, next7, next30
   String _searchQuery = '';
   String _sortBy = 'createdAt';
   String _sortOrder = 'desc';
 
+  // Người tạo gom được từ các task đã tải, dùng để đổ vào dropdown.
+  final Map<String, String> _creatorOptions = {};
+  String? _currentUserId;
+  String? _currentUserName;
+
   final _searchController = TextEditingController();
+
+  int get _activeFilterCount {
+    var count = 0;
+    if (_filterScope != null) count++;
+    if (_filterCreatorId != null) count++;
+    if (_filterStatus != null) count++;
+    if (_filterPriority != null) count++;
+    if (_dueFilter != null) count++;
+    return count;
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _loadTasks();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUser();
+    if (!mounted) return;
+    setState(() {
+      _currentUserId = user?.id;
+      _currentUserName = user?.fullName;
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Tải lại và bỏ toàn bộ bộ lọc (giữ từ khóa tìm kiếm).
+  Future<void> _reloadWithoutFilters() async {
+    setState(() {
+      _filterScope = null;
+      _filterCreatorId = null;
+      _filterStatus = null;
+      _filterPriority = null;
+      _dueFilter = null;
+    });
+    await _loadTasks();
   }
 
   Future<void> _loadTasks() async {
@@ -56,16 +93,23 @@ class _TaskListScreenState extends State<TaskListScreen> {
     try {
       final tasks = await _apiService.getTasks(
         scope: _filterScope,
+        createdBy: _filterCreatorId,
         status: _filterStatus,
         priority: _filterPriority,
+        dueFilter: _dueFilter,
         q: _searchQuery.isNotEmpty ? _searchQuery : null,
         sortBy: _sortBy,
         order: _sortOrder,
-        assigneeId: _filterAssignee?.id,
       );
       setState(() {
         _tasks = tasks;
         _isLoading = false;
+        // Ghi nhớ người tạo để đổ vào dropdown lọc.
+        for (final task in tasks) {
+          if (task.createdBy != null && (task.createdByName ?? '').isNotEmpty) {
+            _creatorOptions[task.createdBy!] = task.createdByName!;
+          }
+        }
       });
     } catch (e) {
       setState(() {
@@ -176,105 +220,165 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
-  // Chọn người phụ trách để lọc danh sách (GET /users/search)
-  void _showAssigneeFilterDialog() {
-    final searchController = TextEditingController();
-    List<User> results = [];
-    bool searching = false;
-    String? searchError;
+  // Mở modal bottom sheet chứa các bộ lọc.
+  void _showFilterSheet() {
+    // Biến tạm: chỉ áp dụng khi bấm "Xác nhận".
+    String tempScope = _filterScope ?? 'all';
+    String tempCreator = _filterCreatorId ?? 'all';
+    String tempStatus = _filterStatus ?? 'all';
+    String tempPriority = _filterPriority ?? 'all';
+    String tempDue = _dueFilter ?? 'all';
 
-    showDialog(
+    // Danh sách người tạo: Tất cả + Tôi + những người đã tạo task tôi thấy.
+    final creatorItems = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: 'all', child: Text('Tất cả')),
+      if (_currentUserId != null)
+        DropdownMenuItem(
+          value: _currentUserId,
+          child: Text(
+            _currentUserName == null || _currentUserName!.isEmpty
+                ? 'Tôi'
+                : 'Tôi ($_currentUserName)',
+          ),
+        ),
+      ..._creatorOptions.entries
+          .where((e) => e.key != _currentUserId && e.value.isNotEmpty)
+          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))),
+    ];
+
+    // Nếu người tạo đang chọn không còn trong danh sách thì quay về "Tất cả".
+    if (!creatorItems.any((item) => item.value == tempCreator)) {
+      tempCreator = 'all';
+    }
+
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Future<void> runSearch(String q) async {
-              setDialogState(() {
-                searching = true;
-                searchError = null;
-              });
-              try {
-                final users = await _userService.searchUsers(q);
-                setDialogState(() {
-                  results = users;
-                  searching = false;
-                });
-              } catch (e) {
-                setDialogState(() {
-                  searchError = e.toString();
-                  searching = false;
-                });
-              }
-            }
-
-            return AlertDialog(
-              title: const Text('Lọc theo người phụ trách'),
-              content: SizedBox(
-                width: double.maxFinite,
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Nhập tên hoặc email rồi Enter',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (val) => runSearch(val),
+                    const Text(
+                      'Lọc công việc',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 12),
-                    if (searching) const CircularProgressIndicator(),
-                    if (searchError != null)
-                      Text(searchError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-                    if (!searching && results.isEmpty && searchController.text.trim().isNotEmpty)
-                      const Text('Không tìm thấy người dùng'),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 240),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: results.length,
-                        itemBuilder: (context, index) {
-                          final user = results[index];
-                          return ListTile(
-                            dense: true,
-                            leading: CircleAvatar(
-                              child: Text(
-                                user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : '?',
-                              ),
-                            ),
-                            title: Text(user.fullName),
-                            subtitle: Text(user.email),
-                            onTap: () {
-                              setState(() => _filterAssignee = user);
-                              Navigator.pop(ctx);
-                              _loadTasks();
-                            },
-                          );
+                    const SizedBox(height: 16),
+                    _buildFilterDropdown(
+                      label: 'Phạm vi',
+                      icon: Icons.folder_outlined,
+                      value: tempScope,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('Tất cả')),
+                        DropdownMenuItem(value: 'created', child: Text('Tôi tạo')),
+                        DropdownMenuItem(value: 'assigned', child: Text('Được giao cho tôi')),
+                        DropdownMenuItem(value: 'shared', child: Text('Được chia sẻ với tôi')),
+                      ],
+                      onChanged: (val) => setSheetState(() => tempScope = val!),
+                    ),
+                    _buildFilterDropdown(
+                      label: 'Người tạo',
+                      icon: Icons.person_outline,
+                      value: tempCreator,
+                      items: creatorItems,
+                      onChanged: (val) => setSheetState(() => tempCreator = val!),
+                    ),
+                    _buildFilterDropdown(
+                      label: 'Trạng thái',
+                      icon: Icons.info_outline,
+                      value: tempStatus,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('Tất cả')),
+                        DropdownMenuItem(value: 'Pending', child: Text('Chờ xử lý')),
+                        DropdownMenuItem(value: 'InProgress', child: Text('Đang thực hiện')),
+                        DropdownMenuItem(value: 'Completed', child: Text('Hoàn thành')),
+                      ],
+                      onChanged: (val) => setSheetState(() => tempStatus = val!),
+                    ),
+                    _buildFilterDropdown(
+                      label: 'Mức độ ưu tiên',
+                      icon: Icons.flag_outlined,
+                      value: tempPriority,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('Tất cả')),
+                        DropdownMenuItem(value: 'High', child: Text('Cao')),
+                        DropdownMenuItem(value: 'Medium', child: Text('Trung bình')),
+                        DropdownMenuItem(value: 'Low', child: Text('Thấp')),
+                      ],
+                      onChanged: (val) => setSheetState(() => tempPriority = val!),
+                    ),
+                    _buildFilterDropdown(
+                      label: 'Hạn hoàn thành',
+                      icon: Icons.event_outlined,
+                      value: tempDue,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('Tất cả')),
+                        DropdownMenuItem(value: 'overdue', child: Text('Quá hạn')),
+                        DropdownMenuItem(value: 'today', child: Text('Hôm nay')),
+                        DropdownMenuItem(value: 'next7', child: Text('7 ngày tới')),
+                        DropdownMenuItem(value: 'next30', child: Text('30 ngày tới')),
+                      ],
+                      onChanged: (val) => setSheetState(() => tempDue = val!),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _filterScope = tempScope == 'all' ? null : tempScope;
+                            _filterCreatorId = tempCreator == 'all' ? null : tempCreator;
+                            _filterStatus = tempStatus == 'all' ? null : tempStatus;
+                            _filterPriority = tempPriority == 'all' ? null : tempPriority;
+                            _dueFilter = tempDue == 'all' ? null : tempDue;
+                          });
+                          _loadTasks();
                         },
+                        icon: const Icon(Icons.check),
+                        label: const Text('Xác nhận'),
                       ),
                     ),
                   ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    setState(() => _filterAssignee = null);
-                    Navigator.pop(ctx);
-                    _loadTasks();
-                  },
-                  child: const Text('Bỏ lọc'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Đóng'),
-                ),
-              ],
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildFilterDropdown({
+    required String label,
+    required IconData icon,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        items: items,
+        onChanged: onChanged,
+      ),
     );
   }
 
@@ -411,8 +515,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Tải lại',
-            onPressed: _loadTasks,
+            tooltip: 'Tải lại & bỏ lọc',
+            onPressed: () => _reloadWithoutFilters(),
           ),
           IconButton(
             icon: const Icon(Icons.person_outline),
@@ -428,131 +532,50 @@ class _TaskListScreenState extends State<TaskListScreen> {
       ),
       body: Column(
         children: [
-          // Thanh tìm kiếm
+          // Thanh tìm kiếm + nút mở bộ lọc
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Tìm kiếm theo tên hoặc mô tả...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                          _loadTasks();
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-              ),
-              onSubmitted: (val) {
-                setState(() => _searchQuery = val.trim());
-                _loadTasks();
-              },
-            ),
-          ),
-
-          // Phạm vi: tất cả / tôi tạo / được giao / được chia sẻ
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             child: Row(
               children: [
-                _buildFilterChip('Tất cả', _filterScope == null, () {
-                  setState(() => _filterScope = null);
-                  _loadTasks();
-                }),
-                const SizedBox(width: 6),
-                _buildFilterChip('Tôi tạo', _filterScope == 'created', () {
-                  setState(() => _filterScope = 'created');
-                  _loadTasks();
-                }),
-                const SizedBox(width: 6),
-                _buildFilterChip('Được giao', _filterScope == 'assigned', () {
-                  setState(() => _filterScope = 'assigned');
-                  _loadTasks();
-                }),
-                const SizedBox(width: 6),
-                _buildFilterChip('Chia sẻ', _filterScope == 'shared', () {
-                  setState(() => _filterScope = 'shared');
-                  _loadTasks();
-                }),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          // Chip lọc trạng thái & ưu tiên
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Row(
-              children: [
-                // Trạng thái
-                _buildFilterChip('Tất cả TT', _filterStatus == null, () {
-                  setState(() => _filterStatus = null);
-                  _loadTasks();
-                }),
-                const SizedBox(width: 6),
-                _buildFilterChip('Chờ xử lý', _filterStatus == 'Pending', () {
-                  setState(() => _filterStatus = _filterStatus == 'Pending' ? null : 'Pending');
-                  _loadTasks();
-                }, color: Colors.grey),
-                const SizedBox(width: 6),
-                _buildFilterChip('Đang làm', _filterStatus == 'InProgress', () {
-                  setState(() => _filterStatus = _filterStatus == 'InProgress' ? null : 'InProgress');
-                  _loadTasks();
-                }, color: Colors.blue),
-                const SizedBox(width: 6),
-                _buildFilterChip('Hoàn thành', _filterStatus == 'Completed', () {
-                  setState(() => _filterStatus = _filterStatus == 'Completed' ? null : 'Completed');
-                  _loadTasks();
-                }, color: Colors.green),
-                const SizedBox(width: 12),
-                // Đường phân cách
-                Container(width: 1, height: 22, color: Colors.grey.shade300),
-                const SizedBox(width: 12),
-                // Ưu tiên
-                _buildFilterChip('🔴 Cao', _filterPriority == 'High', () {
-                  setState(() => _filterPriority = _filterPriority == 'High' ? null : 'High');
-                  _loadTasks();
-                }, color: Colors.red),
-                const SizedBox(width: 6),
-                _buildFilterChip('🟠 TB', _filterPriority == 'Medium', () {
-                  setState(() => _filterPriority = _filterPriority == 'Medium' ? null : 'Medium');
-                  _loadTasks();
-                }, color: Colors.orange),
-                const SizedBox(width: 6),
-                _buildFilterChip('🟢 Thấp', _filterPriority == 'Low', () {
-                  setState(() => _filterPriority = _filterPriority == 'Low' ? null : 'Low');
-                  _loadTasks();
-                }, color: Colors.green),
-                const SizedBox(width: 12),
-                Container(width: 1, height: 22, color: Colors.grey.shade300),
-                const SizedBox(width: 12),
-                _buildFilterChip(
-                  _filterAssignee == null
-                      ? 'Người phụ trách'
-                      : _filterAssignee!.fullName,
-                  _filterAssignee != null,
-                  _showAssigneeFilterDialog,
-                  color: Colors.indigo,
-                ),
-                if (_filterAssignee != null) ...[
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _filterAssignee = null);
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Tìm kiếm theo tên hoặc mô tả...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                                _loadTasks();
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                    ),
+                    onSubmitted: (val) {
+                      setState(() => _searchQuery = val.trim());
                       _loadTasks();
                     },
-                    child: const Icon(Icons.close, size: 18, color: Colors.grey),
                   ),
-                ],
+                ),
+                const SizedBox(width: 8),
+                // Nút lọc nằm bên phải thanh tìm kiếm, mở modal bottom sheet.
+                IconButton(
+                  tooltip: 'Lọc công việc',
+                  onPressed: _showFilterSheet,
+                  icon: Badge(
+                    isLabelVisible: _activeFilterCount > 0,
+                    label: Text('$_activeFilterCount'),
+                    child: Icon(
+                      Icons.filter_list,
+                      color: _activeFilterCount > 0 ? Colors.blue : null,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -573,26 +596,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
         },
         icon: const Icon(Icons.add),
         label: const Text('Thêm việc'),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, bool selected, VoidCallback onTap, {Color? color}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Chip(
-        label: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : (color ?? Colors.black87),
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 12,
-          ),
-        ),
-        backgroundColor: selected ? (color ?? Colors.blue) : Colors.grey.shade100,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
       ),
     );
   }
@@ -628,11 +631,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
             Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 12),
             Text(
-              _filterScope != null ||
-                      _filterStatus != null ||
-                      _filterPriority != null ||
-                      _filterAssignee != null ||
-                      _searchQuery.isNotEmpty
+              _activeFilterCount > 0 || _searchQuery.isNotEmpty
                   ? 'Không tìm thấy công việc phù hợp'
                   : 'Chưa có công việc nào.\nBấm + Thêm việc để bắt đầu!',
               textAlign: TextAlign.center,
@@ -644,7 +643,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadTasks,
+      onRefresh: _reloadWithoutFilters,
       child: ListView.builder(
         padding: const EdgeInsets.only(bottom: 80),
         itemCount: _tasks.length,

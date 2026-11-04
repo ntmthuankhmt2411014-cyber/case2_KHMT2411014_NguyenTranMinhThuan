@@ -48,10 +48,21 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2. Lấy danh sách công việc (scope, lọc status/priority/assigneeId, tìm kiếm q, sắp xếp)
+// 2. Lấy danh sách công việc (scope, lọc status/priority/assigneeId/createdBy/dueFilter, tìm kiếm q, sắp xếp)
 exports.getTasks = async (req, res) => {
   try {
-    const { scope, status, priority, category, q, sortBy, order, assigneeId } = req.query;
+    const {
+      scope,
+      status,
+      priority,
+      category,
+      q,
+      sortBy,
+      order,
+      assigneeId,
+      createdBy,
+      dueFilter,
+    } = req.query;
     const userId = req.user._id;
     const sharedTaskIds = await getSharedTaskIds(userId);
     const conditions = [];
@@ -91,6 +102,39 @@ exports.getTasks = async (req, res) => {
       conditions.push({
         $or: [{ assigneeIds: assigneeObjectId }, { primaryAssigneeId: assigneeObjectId }],
       });
+    }
+
+    // Lọc theo người tạo công việc (dùng cho dropdown Người tạo ở Flutter)
+    if (createdBy) {
+      if (!mongoose.Types.ObjectId.isValid(createdBy)) {
+        return res.status(400).json({ message: 'createdBy không hợp lệ' });
+      }
+      conditions.push({ createdBy: new mongoose.Types.ObjectId(createdBy) });
+    }
+
+    // Lọc theo hạn hoàn thành: overdue | today | next7 | next30
+    if (dueFilter && dueFilter !== 'all') {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const addDays = (days) => {
+        const d = new Date(startOfToday);
+        d.setDate(d.getDate() + days);
+        return d;
+      };
+
+      if (dueFilter === 'overdue') {
+        // Quá hạn = có hạn, hạn đã qua và chưa hoàn thành
+        conditions.push({ dueDate: { $ne: null, $lt: now } });
+        conditions.push({ status: { $ne: 'Completed' } });
+      } else if (dueFilter === 'today') {
+        conditions.push({ dueDate: { $gte: startOfToday, $lt: addDays(1) } });
+      } else if (dueFilter === 'next7') {
+        conditions.push({ dueDate: { $gte: startOfToday, $lt: addDays(8) } });
+      } else if (dueFilter === 'next30') {
+        conditions.push({ dueDate: { $gte: startOfToday, $lt: addDays(31) } });
+      } else {
+        return res.status(400).json({ message: 'dueFilter không hợp lệ' });
+      }
     }
 
     if (q && q.trim()) {

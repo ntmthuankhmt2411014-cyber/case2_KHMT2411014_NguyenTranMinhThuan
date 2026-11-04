@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/task.dart';
+import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
+import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   final String taskId;
@@ -15,15 +17,47 @@ class TaskDetailScreen extends StatefulWidget {
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TaskApiService _apiService = TaskApiService();
+  final AuthService _authService = AuthService();
 
   Task? _task;
   bool _isLoading = true;
   String? _error;
+  String? _currentUserId;
+
+  // Chỉ người tạo mới thấy nút chỉnh sửa/xóa.
+  // Backend vẫn kiểm tra lại quyền, UI chỉ hỗ trợ trải nghiệm.
+  bool get _isCreator {
+    final task = _task;
+    return task != null &&
+        _currentUserId != null &&
+        task.createdBy == _currentUserId;
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _fetchTask();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUser();
+    if (!mounted) return;
+    setState(() => _currentUserId = user?.id);
+  }
+
+  Future<void> _openEdit() async {
+    final task = _task;
+    if (task == null) return;
+
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => TaskEditScreen(task: task)),
+    );
+
+    if (changed == true) {
+      _fetchTask();
+    }
   }
 
   Future<void> _fetchTask() async {
@@ -142,6 +176,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
+          if (_isCreator)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Chỉnh sửa công việc',
+              onPressed: _openEdit,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Tải lại',

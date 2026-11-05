@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../models/task.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
+import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
 import 'task_edit_screen.dart';
 
@@ -26,14 +27,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String? _error;
   String? _currentUserId;
 
-  // Chỉ người tạo mới thấy nút chỉnh sửa/xóa.
+  // Quyền lấy từ server (myPermission); nếu thiếu thì tự suy ra từ dữ liệu task.
   // Backend vẫn kiểm tra lại quyền, UI chỉ hỗ trợ trải nghiệm.
-  bool get _isCreator {
-    final task = _task;
-    return task != null &&
-        _currentUserId != null &&
-        task.createdBy == _currentUserId;
-  }
+  String? get _permission => _task?.effectivePermission(_currentUserId);
+
+  bool get _canEdit => TaskPermissions.canEdit(_permission);
+  bool get _canChangeStatus => TaskPermissions.canChangeStatus(_permission);
+  bool get _canManage => TaskPermissions.canManage(_permission);
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  // Xác nhận rồi xóa công việc. Chỉ người tạo thấy nút, backend kiểm tra lại quyền.
+  // Xác nhận rồi xóa công việc. Chỉ creator thấy nút, backend kiểm tra lại quyền.
   Future<void> _confirmDelete() async {
     final task = _task;
     if (task == null || _isDeleting) return;
@@ -94,7 +94,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  Future<void> _fetchTask() async {    setState(() {
+  Future<void> _fetchTask() async {
+    setState(() {
       _isLoading = true;
       _error = null;
     });
@@ -209,12 +210,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
-          if (_isCreator) ...[
+          if (_canEdit)
             IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Chỉnh sửa công việc',
               onPressed: _openEdit,
             ),
+          if (_canManage)
             IconButton(
               icon: _isDeleting
                   ? const SizedBox(
@@ -226,7 +228,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               tooltip: 'Xóa công việc',
               onPressed: _isDeleting ? null : _confirmDelete,
             ),
-          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Tải lại',
@@ -362,42 +363,56 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: task.status == 'Pending' ? Colors.grey.shade200 : null,
-                              side: BorderSide(color: task.status == 'Pending' ? Colors.black87 : Colors.grey.shade300),
+                    if (_canChangeStatus)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: task.status == 'Pending' ? Colors.grey.shade200 : null,
+                                side: BorderSide(color: task.status == 'Pending' ? Colors.black87 : Colors.grey.shade300),
+                              ),
+                              onPressed: () => _updateStatus('Pending'),
+                              child: const Text('Chờ xử lý', style: TextStyle(fontSize: 12)),
                             ),
-                            onPressed: () => _updateStatus('Pending'),
-                            child: const Text('Chờ xử lý', style: TextStyle(fontSize: 12)),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: task.status == 'InProgress' ? Colors.blue.shade50 : null,
-                              side: BorderSide(color: task.status == 'InProgress' ? Colors.blue : Colors.grey.shade300),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: task.status == 'InProgress' ? Colors.blue.shade50 : null,
+                                side: BorderSide(color: task.status == 'InProgress' ? Colors.blue : Colors.grey.shade300),
+                              ),
+                              onPressed: () => _updateStatus('InProgress'),
+                              child: const Text('Đang làm', style: TextStyle(fontSize: 12)),
                             ),
-                            onPressed: () => _updateStatus('InProgress'),
-                            child: const Text('Đang làm', style: TextStyle(fontSize: 12)),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: task.status == 'Completed' ? Colors.green.shade50 : null,
-                              side: BorderSide(color: task.status == 'Completed' ? Colors.green : Colors.grey.shade300),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: task.status == 'Completed' ? Colors.green.shade50 : null,
+                                side: BorderSide(color: task.status == 'Completed' ? Colors.green : Colors.grey.shade300),
+                              ),
+                              onPressed: () => _updateStatus('Completed'),
+                              child: const Text('Hoàn thành', style: TextStyle(fontSize: 12)),
                             ),
-                            onPressed: () => _updateStatus('Completed'),
-                            child: const Text('Hoàn thành', style: TextStyle(fontSize: 12)),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade600),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Bạn chỉ có quyền xem công việc này.',
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -563,6 +578,52 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           );
                         }).toList(),
                       ),
+                    ],
+
+                    // Danh sách người được chia sẻ
+                    if (task.shares.isNotEmpty) ...[
+                      const Divider(height: 12),
+                      const Text(
+                        'Người được chia sẻ:',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 6),
+                      ...task.shares.map((share) {
+                        final name = share.userFullName.isNotEmpty
+                            ? share.userFullName
+                            : (share.userEmail.isNotEmpty ? share.userEmail : 'Người dùng');
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.purple.shade100,
+                            child: Text(
+                              name[0].toUpperCase(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.purple,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          title: Text(name),
+                          subtitle: Text(share.userEmail.isNotEmpty ? share.userEmail : 'Được chia sẻ'),
+                          trailing: Chip(
+                            label: Text(
+                              share.permission == 'editor' ? 'Chỉnh sửa' : 'Chỉ xem',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: share.permission == 'editor' ? Colors.purple : Colors.grey.shade700,
+                              ),
+                            ),
+                            backgroundColor: share.permission == 'editor'
+                                ? Colors.purple.withValues(alpha: 0.1)
+                                : Colors.grey.shade200,
+                            side: BorderSide.none,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        );
+                      }),
                     ],
                   ],
                 ),

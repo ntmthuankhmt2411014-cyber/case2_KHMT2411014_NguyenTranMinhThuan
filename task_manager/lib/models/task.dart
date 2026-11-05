@@ -125,6 +125,31 @@ class Task {
     );
   }
 
+  // Server đã trả myPermission; nếu không (dữ liệu cũ) thì tự suy ra theo
+  // thứ tự ưu tiên: creator > primary > editor > assignee > viewer.
+  String? effectivePermission(String? currentUserId) {
+    if (myPermission != null) return myPermission;
+    if (currentUserId == null) return null;
+
+    if (createdBy == currentUserId) return 'creator';
+    if (primaryAssigneeId == currentUserId) return 'primary';
+
+    String? sharePermission;
+    for (final share in shares) {
+      if (share.userId == currentUserId) {
+        sharePermission = share.permission;
+        break;
+      }
+    }
+
+    if (sharePermission == 'editor') return 'editor';
+    if (assignees.any((assignee) => assignee.id == currentUserId)) {
+      return 'assignee';
+    }
+    if (sharePermission == 'viewer') return 'viewer';
+    return 'viewer';
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'title': title,

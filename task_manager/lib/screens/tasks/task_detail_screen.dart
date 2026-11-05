@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../models/task.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
+import '../../widgets/delete_task_dialog.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -21,6 +22,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Task? _task;
   bool _isLoading = true;
+  bool _isDeleting = false;
   String? _error;
   String? _currentUserId;
 
@@ -60,8 +62,39 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  Future<void> _fetchTask() async {
-    setState(() {
+  // Xác nhận rồi xóa công việc. Chỉ người tạo thấy nút, backend kiểm tra lại quyền.
+  Future<void> _confirmDelete() async {
+    final task = _task;
+    if (task == null || _isDeleting) return;
+
+    final confirmed = await showDeleteTaskDialog(context, task.title);
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isDeleting = true);
+    final result = await _apiService.deleteTask(task.id);
+    if (!mounted) return;
+    setState(() => _isDeleting = false);
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Xóa công việc thành công'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      // Trả true để màn danh sách biết vừa xóa và tải lại.
+      Navigator.pop(context, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Xóa công việc thất bại'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _fetchTask() async {    setState(() {
       _isLoading = true;
       _error = null;
     });
@@ -176,12 +209,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
-          if (_isCreator)
+          if (_isCreator) ...[
             IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Chỉnh sửa công việc',
               onPressed: _openEdit,
             ),
+            IconButton(
+              icon: _isDeleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: 'Xóa công việc',
+              onPressed: _isDeleting ? null : _confirmDelete,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Tải lại',

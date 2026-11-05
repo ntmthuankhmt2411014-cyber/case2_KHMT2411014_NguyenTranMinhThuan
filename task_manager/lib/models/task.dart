@@ -1,3 +1,5 @@
+import 'task_share.dart';
+
 class TaskAssignee {
   final String id;
   final String fullName;
@@ -33,6 +35,8 @@ class Task {
   final String? primaryAssigneeId;
   final String? primaryAssigneeName;
   final List<TaskAssignee> assignees;
+  final List<TaskShare> shares;
+  final String? myPermission;
   final String? createdAt;
   final String? updatedAt;
 
@@ -51,6 +55,8 @@ class Task {
     this.primaryAssigneeId,
     this.primaryAssigneeName,
     this.assignees = const [],
+    this.shares = const [],
+    this.myPermission,
     this.createdAt,
     this.updatedAt,
   });
@@ -88,6 +94,15 @@ class Task {
       }
     }
 
+    List<TaskShare> sharesList = [];
+    if (json['shares'] is List) {
+      for (var item in json['shares']) {
+        if (item is Map<String, dynamic>) {
+          sharesList.add(TaskShare.fromJson(item));
+        }
+      }
+    }
+
     return Task(
       id: json['_id']?.toString() ?? '',
       title: json['title'] ?? '',
@@ -103,6 +118,8 @@ class Task {
       primaryAssigneeId: primaryAssigneeId,
       primaryAssigneeName: primaryAssigneeName,
       assignees: assigneesList,
+      shares: sharesList,
+      myPermission: json['myPermission']?.toString(),
       createdAt: json['createdAt']?.toString(),
       updatedAt: json['updatedAt']?.toString(),
     );

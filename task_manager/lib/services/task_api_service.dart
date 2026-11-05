@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/task.dart';
+import '../models/task_share.dart';
 import '../utils/constants.dart';
 
 class TaskApiService {
@@ -20,6 +21,15 @@ class TaskApiService {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
+  }
+
+  // Dùng chung cho các API ghi: trả success + toàn bộ dữ liệu server trả về.
+  Map<String, dynamic> _decodeMutation(http.Response response, String fallbackMessage) {
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode == 200) {
+      return {'success': true, ...data};
+    }
+    return {'success': false, 'message': data['message'] ?? fallbackMessage};
   }
 
   // 1. Lấy danh sách công việc (có scope, filter, search, sort)
@@ -176,6 +186,162 @@ class TaskApiService {
       } else {
         return {'success': false, 'message': data['message'] ?? 'Xóa công việc thất bại'};
       }
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 7. Lấy danh sách người được giao
+  Future<List<TaskAssignee>> getAssignees(String taskId) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/tasks/$taskId/assignees'),
+          headers: await _authHeaders(),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw Exception('Không thể tải danh sách người được giao (${response.statusCode})');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final List items = data['assignees'] as List? ?? [];
+    return items.whereType<Map<String, dynamic>>().map(TaskAssignee.fromJson).toList();
+  }
+
+  // 8. Giao việc cho một hoặc nhiều người
+  Future<Map<String, dynamic>> assignUsers(
+    String taskId,
+    List<String> userIds, {
+    String? primaryAssigneeId,
+  }) async {
+    try {
+      final body = <String, dynamic>{'userIds': userIds};
+      if (primaryAssigneeId != null) {
+        body['primaryAssigneeId'] = primaryAssigneeId;
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/tasks/$taskId/assignees'),
+            headers: await _authHeaders(),
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Giao việc thất bại');
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 9. Đặt người phụ trách chính
+  Future<Map<String, dynamic>> setPrimaryAssignee(String taskId, String userId) async {
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/tasks/$taskId/assignees/$userId'),
+            headers: await _authHeaders(),
+            body: jsonEncode(<String, dynamic>{}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Cập nhật người phụ trách chính thất bại');
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 10. Hủy giao việc cho một người
+  Future<Map<String, dynamic>> removeAssignee(String taskId, String userId) async {
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/tasks/$taskId/assignees/$userId'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Hủy giao việc thất bại');
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 11. Lấy danh sách người được chia sẻ
+  Future<List<TaskShare>> getShares(String taskId) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/tasks/$taskId/shares'),
+          headers: await _authHeaders(),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw Exception('Không thể tải danh sách chia sẻ (${response.statusCode})');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final List items = data['shares'] as List? ?? [];
+    return items.whereType<Map<String, dynamic>>().map(TaskShare.fromJson).toList();
+  }
+
+  // 12. Chia sẻ công việc cho một hoặc nhiều người
+  Future<Map<String, dynamic>> shareUsers(
+    String taskId,
+    List<String> userIds,
+    String permission,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/tasks/$taskId/shares'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'userIds': userIds,
+              'permission': permission,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Chia sẻ công việc thất bại');
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 13. Cập nhật quyền của một người được chia sẻ
+  Future<Map<String, dynamic>> updateSharePermission(
+    String taskId,
+    String shareId,
+    String permission,
+  ) async {
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/tasks/$taskId/shares/$shareId'),
+            headers: await _authHeaders(),
+            body: jsonEncode({'permission': permission}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Cập nhật quyền chia sẻ thất bại');
+    } catch (e) {
+      return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
+    }
+  }
+
+  // 14. Thu hồi quyền chia sẻ
+  Future<Map<String, dynamic>> removeShare(String taskId, String shareId) async {
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/tasks/$taskId/shares/$shareId'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decodeMutation(response, 'Thu hồi quyền chia sẻ thất bại');
     } catch (e) {
       return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
     }

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const assigneeController = require('../controllers/assignee.controller');
+const shareController = require('../controllers/share.controller');
 const authMiddleware = require('../middleware/auth.middleware');
 
 // Tất cả route đều yêu cầu xác thực
@@ -19,5 +20,11 @@ router.get('/:id/assignees', assigneeController.getAssignees);
 router.post('/:id/assignees', assigneeController.assignUsers);
 router.patch('/:id/assignees/:userId', assigneeController.setPrimaryAssignee);
 router.delete('/:id/assignees/:userId', assigneeController.removeAssignee);
+
+// Chia sẻ
+router.get('/:id/shares', shareController.getShares);
+router.post('/:id/shares', shareController.shareUsers);
+router.patch('/:id/shares/:shareId', shareController.updateSharePermission);
+router.delete('/:id/shares/:shareId', shareController.removeShare);
 
 module.exports = router;

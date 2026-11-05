@@ -1,18 +1,16 @@
 const mongoose = require('mongoose');
 const Task = require('../models/task.model');
 const TaskShare = require('../models/taskShare.model');
+const { getTaskAccess } = require('../utils/taskPermissions');
 
 async function getSharedTaskIds(userId) {
   const shares = await TaskShare.find({ userId }).select('taskId');
   return shares.map((share) => share.taskId);
 }
 
-function userCanAccessTask(task, userId) {
-  const uid = userId.toString();
-  const isCreator = task.createdBy && task.createdBy._id.toString() === uid;
-  const isAssignee =
-    task.assigneeIds && task.assigneeIds.some((u) => u._id.toString() === uid);
-  return { isCreator, isAssignee };
+// Lấy bản ghi chia sẻ (nếu có) của một người trên một công việc
+async function findUserShare(taskId, userId) {
+  return TaskShare.findOne({ taskId, userId });
 }
 
 // 1. Tạo công việc mới
@@ -185,14 +183,22 @@ exports.getTaskById = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    const { isCreator, isAssignee } = userCanAccessTask(task, req.user._id);
-    const isShared = await TaskShare.exists({ taskId: task._id, userId: req.user._id });
+    const share = await findUserShare(task._id, req.user._id);
+    const access = getTaskAccess(task, req.user._id, share);
 
-    if (!isCreator && !isAssignee && !isShared) {
+    if (!access.canView) {
       return res.status(403).json({ message: 'Bạn không có quyền truy cập công việc này' });
     }
 
-    return res.status(200).json(task);
+    const shares = await TaskShare.find({ taskId: task._id })
+      .populate('userId', 'fullName email avatarUrl')
+      .populate('sharedBy', 'fullName email');
+
+    return res.status(200).json({
+      ...task.toObject(),
+      shares,
+      myPermission: access.role,
+    });
   } catch (error) {
     console.error('Lỗi lấy chi tiết công việc:', error);
     return res.status(500).json({ message: 'Lỗi server khi lấy chi tiết công việc' });
@@ -208,8 +214,11 @@ exports.updateTask = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    // Chỉ người tạo mới có quyền sửa
-    if (task.createdBy.toString() !== req.user._id.toString()) {
+    // Người tạo, phụ trách chính hoặc editor được sửa
+    const share = await findUserShare(task._id, req.user._id);
+    const access = getTaskAccess(task, req.user._id, share);
+
+    if (!access.canEdit) {
       return res.status(403).json({ message: 'Bạn không có quyền chỉnh sửa công việc này' });
     }
 
@@ -245,11 +254,11 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    // Người tạo hoặc người được giao có thể cập nhật trạng thái
-    const isOwner = task.createdBy.toString() === req.user._id.toString();
-    const isAssignee = task.assigneeIds && task.assigneeIds.some(id => id.toString() === req.user._id.toString());
+    // Người tạo, phụ trách chính, editor hoặc người được giao được đổi trạng thái
+    const share = await findUserShare(task._id, req.user._id);
+    const access = getTaskAccess(task, req.user._id, share);
 
-    if (!isOwner && !isAssignee) {
+    if (!access.canChangeStatus) {
       return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái công việc này' });
     }
 
@@ -281,11 +290,16 @@ exports.deleteTask = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy công việc' });
     }
 
-    if (task.createdBy.toString() !== req.user._id.toString()) {
+    const share = await findUserShare(task._id, req.user._id);
+    const access = getTaskAccess(task, req.user._id, share);
+
+    if (!access.canDelete) {
       return res.status(403).json({ message: 'Bạn không có quyền xóa công việc này' });
     }
 
     await Task.findByIdAndDelete(req.params.id);
+    // Dọn dữ liệu chia sẻ của công việc vừa xóa để tránh bản ghi mồ côi
+    await TaskShare.deleteMany({ taskId: task._id });
 
     return res.status(200).json({ message: 'Xóa công việc thành công' });
   } catch (error) {

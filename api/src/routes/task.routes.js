@@ -3,6 +3,7 @@ const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const assigneeController = require('../controllers/assignee.controller');
 const shareController = require('../controllers/share.controller');
+const emailLogController = require('../controllers/emailLog.controller');
 const authMiddleware = require('../middleware/auth.middleware');
 
 // Tất cả route đều yêu cầu xác thực
@@ -26,5 +27,8 @@ router.get('/:id/shares', shareController.getShares);
 router.post('/:id/shares', shareController.shareUsers);
 router.patch('/:id/shares/:shareId', shareController.updateSharePermission);
 router.delete('/:id/shares/:shareId', shareController.removeShare);
+
+// Lịch sử gửi email của công việc (chỉ người tạo)
+router.get('/:id/email-logs', emailLogController.getTaskEmailLogs);
 
 module.exports = router;

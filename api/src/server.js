@@ -11,11 +11,13 @@ const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const taskRoutes = require('./routes/task.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const emailLogRoutes = require('./routes/emailLog.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/email-logs', emailLogRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Task Manager API is running' });

@@ -4,6 +4,8 @@ const TaskShare = require('../models/taskShare.model');
 const User = require('../models/user.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const { resolvePrimaryAssignee } = require('../utils/assigneeRules');
+const taskEventService = require('../services/taskEvent.service');
+const { EVENT_TYPES } = require('../utils/notificationEvents');
 
 const USER_FIELDS = 'fullName email avatarUrl';
 
@@ -98,7 +100,8 @@ exports.assignUsers = async (req, res) => {
       return res.status(400).json({ message: 'Một hoặc nhiều người dùng không tồn tại' });
     }
 
-    const mergedIds = [...new Set([...assigneeIdsOf(task), ...normalizedIds])];
+    const oldAssigneeIds = assigneeIdsOf(task);
+    const mergedIds = [...new Set([...oldAssigneeIds, ...normalizedIds])];
 
     let primary;
     try {
@@ -114,6 +117,23 @@ exports.assignUsers = async (req, res) => {
     task.assigneeIds = mergedIds.map((id) => new mongoose.Types.ObjectId(id));
     task.primaryAssigneeId = primary ? new mongoose.Types.ObjectId(primary) : null;
     await task.save();
+
+    // Chỉ báo cho những người vừa được thêm, không báo lại người đã có sẵn.
+    const addedIds = normalizedIds.filter((id) => !oldAssigneeIds.includes(id));
+    if (addedIds.length > 0) {
+      try {
+        await taskEventService.emitTaskEvent({
+          task,
+          actorId: req.user._id,
+          actorName: req.user.fullName,
+          eventType: EVENT_TYPES.TASK_ASSIGNED,
+          targetUserIds: addedIds,
+        });
+      } catch (error) {
+        // Lỗi thông báo/email không được làm hỏng thao tác giao việc.
+        console.error('Lỗi gửi thông báo giao việc:', error);
+      }
+    }
 
     return respondAssignees(res, task, 'Giao việc thành công');
   } catch (error) {

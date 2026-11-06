@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 const Task = require('../models/task.model');
 const TaskShare = require('../models/taskShare.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
+const taskEventService = require('../services/taskEvent.service');
+const {
+  EVENT_TYPES,
+  hasDueDateChanged,
+  isTransitionToCompleted,
+} = require('../utils/notificationEvents');
 
 async function getSharedTaskIds(userId) {
   const shares = await TaskShare.find({ userId }).select('taskId');
@@ -224,6 +230,10 @@ exports.updateTask = async (req, res) => {
 
     const { title, description, category, priority, status, startDate, dueDate } = req.body;
 
+    // Lưu giá trị cũ để biết có phát sinh sự kiện đổi hạn / hoàn thành không.
+    const oldDueDate = task.dueDate;
+    const oldStatus = task.status;
+
     if (title !== undefined) task.title = title.trim();
     if (description !== undefined) task.description = description;
     if (category !== undefined) task.category = category;
@@ -233,6 +243,35 @@ exports.updateTask = async (req, res) => {
     if (dueDate !== undefined) task.dueDate = dueDate;
 
     await task.save();
+
+    // Mỗi sự kiện trong try/catch riêng: lỗi email không chặn sự kiện còn lại
+    // và không làm hỏng response cập nhật công việc.
+    if (hasDueDateChanged(oldDueDate, task.dueDate)) {
+      try {
+        await taskEventService.emitTaskEvent({
+          task,
+          actorId: req.user._id,
+          actorName: req.user.fullName,
+          eventType: EVENT_TYPES.DUE_DATE_CHANGED,
+        });
+      } catch (error) {
+        console.error('Lỗi gửi thông báo đổi hạn:', error);
+      }
+    }
+
+    if (isTransitionToCompleted(oldStatus, task.status)) {
+      try {
+        await taskEventService.emitTaskEvent({
+          task,
+          actorId: req.user._id,
+          actorName: req.user.fullName,
+          eventType: EVENT_TYPES.TASK_COMPLETED,
+        });
+      } catch (error) {
+        console.error('Lỗi gửi thông báo hoàn thành:', error);
+      }
+    }
+
     const populated = await task.populate('createdBy', 'fullName email');
 
     return res.status(200).json({

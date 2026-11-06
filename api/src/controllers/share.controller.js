@@ -4,6 +4,8 @@ const TaskShare = require('../models/taskShare.model');
 const User = require('../models/user.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const { validateSharePermission } = require('../utils/shareRules');
+const taskEventService = require('../services/taskEvent.service');
+const { EVENT_TYPES } = require('../utils/notificationEvents');
 
 const SHARE_POPULATE = [
   { path: 'userId', select: 'fullName email avatarUrl' },
@@ -94,6 +96,15 @@ exports.shareUsers = async (req, res) => {
       return res.status(400).json({ message: 'Một hoặc nhiều người dùng không tồn tại' });
     }
 
+    // Xác định ai là người mới trước khi upsert để không gửi thông báo trùng
+    // cho người đã được chia sẻ từ trước.
+    const existing = await TaskShare.find({
+      taskId: task._id,
+      userId: { $in: normalizedIds },
+    }).select('userId');
+    const existingIds = new Set(existing.map((item) => String(item.userId)));
+    const newShareIds = normalizedIds.filter((id) => !existingIds.has(id));
+
     // Upsert để chia sẻ lại chỉ cập nhật quyền, không tạo bản ghi trùng.
     for (const userId of normalizedIds) {
       await TaskShare.findOneAndUpdate(
@@ -104,6 +115,24 @@ exports.shareUsers = async (req, res) => {
     }
 
     const shares = await listShares(task._id);
+
+    // Chỉ báo cho người vừa được chia sẻ, kèm quyền họ nhận được.
+    if (newShareIds.length > 0) {
+      try {
+        await taskEventService.emitTaskEvent({
+          task,
+          actorId: req.user._id,
+          actorName: req.user.fullName,
+          eventType: EVENT_TYPES.TASK_SHARED,
+          targetUserIds: newShareIds,
+          permission,
+        });
+      } catch (error) {
+        // Lỗi thông báo/email không được làm hỏng thao tác chia sẻ.
+        console.error('Lỗi gửi thông báo chia sẻ:', error);
+      }
+    }
+
     return res.status(200).json({
       message: 'Chia sẻ công việc thành công',
       shares,
@@ -142,9 +171,26 @@ exports.updateSharePermission = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy chia sẻ' });
     }
 
+    // Lưu id dạng chuỗi trước khi populate vì populate sẽ thay userId bằng object.
+    const shareUserId = String(share.userId);
+
     share.permission = permission;
     await share.save();
     await share.populate(SHARE_POPULATE);
+
+    // Đổi quyền cũng là một lần chia sẻ lại: báo cho người được đổi quyền.
+    try {
+      await taskEventService.emitTaskEvent({
+        task,
+        actorId: req.user._id,
+        actorName: req.user.fullName,
+        eventType: EVENT_TYPES.TASK_SHARED,
+        targetUserIds: [shareUserId],
+        permission,
+      });
+    } catch (error) {
+      console.error('Lỗi gửi thông báo đổi quyền chia sẻ:', error);
+    }
 
     return res.status(200).json({
       message: 'Cập nhật quyền chia sẻ thành công',

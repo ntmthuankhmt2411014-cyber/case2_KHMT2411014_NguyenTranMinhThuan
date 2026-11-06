@@ -12,6 +12,7 @@ const userRoutes = require('./routes/user.routes');
 const taskRoutes = require('./routes/task.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const emailLogRoutes = require('./routes/emailLog.routes');
+const { startDeadlineReminderJob } = require('./jobs/deadlineReminder.job');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -29,7 +30,10 @@ mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('MongoDB connected, database:', mongoose.connection.name);
-    app.listen(PORT, () => console.log(`Server chạy tại http://localhost:${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`Server chạy tại http://localhost:${PORT}`);
+      startDeadlineReminderJob();
+    });
   })
   .catch((err) => {
     console.error('Lỗi kết nối MongoDB:', err.message);

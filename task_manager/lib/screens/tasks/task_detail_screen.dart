@@ -8,6 +8,7 @@ import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
 import 'task_assign_screen.dart';
 import 'task_edit_screen.dart';
+import 'task_share_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   final String taskId;
@@ -70,6 +71,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (context) => TaskAssignScreen(task: task)),
+    );
+
+    if (changed == true) {
+      _fetchTask();
+    }
+  }
+
+  Future<void> _openShare() async {
+    final task = _task;
+    if (task == null) return;
+
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => TaskShareScreen(task: task)),
     );
 
     if (changed == true) {
@@ -456,13 +471,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _openAssign,
-                          icon: const Icon(Icons.person_add_alt_1),
-                          label: const Text('Giao việc'),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _openAssign,
+                              icon: const Icon(Icons.person_add_alt_1),
+                              label: const Text('Giao việc'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _openShare,
+                              icon: const Icon(Icons.share_outlined),
+                              label: const Text('Chia sẻ'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

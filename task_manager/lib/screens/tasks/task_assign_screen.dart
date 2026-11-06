@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import '../../models/user.dart';
+import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
 import '../../services/user_service.dart';
 
@@ -19,6 +20,7 @@ class TaskAssignScreen extends StatefulWidget {
 class _TaskAssignScreenState extends State<TaskAssignScreen> {
   final TaskApiService _apiService = TaskApiService();
   final UserService _userService = UserService();
+  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
 
   // Debounce để không gọi API tìm kiếm trên mỗi ký tự gõ.
@@ -31,6 +33,7 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
   final Map<String, TaskAssignee> _people = {};
 
   String? _primaryId;
+  String? _currentUserId;
   List<User> _searchResults = [];
   bool _isSearching = false;
   bool _isSaving = false;
@@ -39,6 +42,7 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _originalIds = widget.task.assignees.map((a) => a.id).toSet();
     _selectedIds = {..._originalIds};
     for (final assignee in widget.task.assignees) {
@@ -47,6 +51,19 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
 
     final primary = widget.task.primaryAssigneeId;
     _primaryId = (primary != null && _selectedIds.contains(primary)) ? primary : null;
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUser();
+    if (!mounted) return;
+    setState(() {
+      _currentUserId = user?.id;
+      // Nếu kết quả tìm kiếm về trước khi biết user hiện tại, loại mình ra luôn.
+      _searchResults = filterAssignCandidates(
+        users: _searchResults,
+        currentUserId: _currentUserId,
+      );
+    });
   }
 
   @override
@@ -82,7 +99,10 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
       final results = await _userService.searchUsers(query);
       if (!mounted || query != _searchController.text.trim()) return;
       setState(() {
-        _searchResults = results;
+        _searchResults = filterAssignCandidates(
+          users: results,
+          currentUserId: _currentUserId,
+        );
         _isSearching = false;
       });
     } catch (e) {
@@ -95,6 +115,9 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
   }
 
   void _toggleUser(User user) {
+    // Phòng trường hợp dữ liệu tìm kiếm cũ: không cho tự giao việc cho mình.
+    if (user.id == _currentUserId) return;
+
     setState(() {
       if (_selectedIds.contains(user.id)) {
         _removeSelected(user.id);
@@ -373,6 +396,15 @@ class _TaskAssignScreenState extends State<TaskAssignScreen> {
       onTap: _isSaving ? null : () => _toggleUser(user),
     );
   }
+}
+
+// Không cho giao việc cho chính người đang đăng nhập.
+List<User> filterAssignCandidates({
+  required List<User> users,
+  required String? currentUserId,
+}) {
+  if (currentUserId == null) return users;
+  return users.where((user) => user.id != currentUserId).toList();
 }
 
 // Kết quả tính toán khi xác nhận giao việc.

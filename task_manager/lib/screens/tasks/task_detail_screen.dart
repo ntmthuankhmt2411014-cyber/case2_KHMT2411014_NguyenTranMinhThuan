@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
 import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
+import 'task_assign_screen.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -55,6 +56,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (context) => TaskEditScreen(task: task)),
+    );
+
+    if (changed == true) {
+      _fetchTask();
+    }
+  }
+
+  Future<void> _openAssign() async {
+    final task = _task;
+    if (task == null) return;
+
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => TaskAssignScreen(task: task)),
     );
 
     if (changed == true) {
@@ -420,7 +435,43 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 12),
 
-            // Card 3: Mô tả công việc
+            // Card 3: Quản lý công việc (chỉ creator)
+            if (_canManage) ...[
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.admin_panel_settings_outlined, size: 20, color: Colors.indigo),
+                          SizedBox(width: 8),
+                          Text(
+                            'Quản lý công việc',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _openAssign,
+                          icon: const Icon(Icons.person_add_alt_1),
+                          label: const Text('Giao việc'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Card 4: Mô tả công việc
             Card(
               elevation: 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -455,7 +506,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 12),
 
-            // Card 4: Thời gian & Tiến độ
+            // Card 5: Thời gian & Tiến độ
             Card(
               elevation: 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -499,7 +550,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 12),
 
-            // Card 5: Người liên quan
+            // Card 6: Người liên quan
             Card(
               elevation: 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

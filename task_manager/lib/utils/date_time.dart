@@ -29,3 +29,16 @@ String formatDateTime(DateTime? date, {String emptyText = ''}) {
 String? toUtcIsoString(DateTime? date) {
   return date?.toUtc().toIso8601String();
 }
+
+/// Ghép phần ngày của [date] với giờ/phút người dùng chọn ở TimePicker.
+/// Giữ nguyên năm/tháng/ngày, chỉ thay giờ và phút.
+DateTime combineDateAndTime(DateTime date, int hour, int minute) {
+  return DateTime(date.year, date.month, date.day, hour, minute);
+}
+
+/// Hạn hoàn thành phải sau ngày bắt đầu (so sánh cả giờ/phút).
+/// Thiếu một trong hai mốc thì chưa cần kiểm tra nên trả true.
+bool isDueAfterStart(DateTime? start, DateTime? due) {
+  if (start == null || due == null) return true;
+  return due.isAfter(start);
+}

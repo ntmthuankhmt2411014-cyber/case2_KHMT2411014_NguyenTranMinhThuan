@@ -57,38 +57,61 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate({required bool isStart}) async {
+  Future<void> _pickDateTime({required bool isStart}) async {
     final now = DateTime.now();
-    final picked = await showDatePicker(
+    final current = isStart ? _startDate : _dueDate;
+    final initialDate = current ?? now;
+
+    final pickedDate = await showDatePicker(
       context: context,
-      initialDate: isStart ? (_startDate ?? now) : (_dueDate ?? now),
+      initialDate: initialDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
     );
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _startDate = picked;
-        } else {
-          _dueDate = picked;
-        }
-      });
-    }
+    if (pickedDate == null || !mounted) return;
+
+    // Mặc định giờ: ngày bắt đầu 00:00, hạn hoàn thành 23:59.
+    // Nếu mốc đã có giờ thì giữ nguyên giờ cũ để không làm lệch dữ liệu.
+    final fallbackTime = isStart
+        ? const TimeOfDay(hour: 0, minute: 0)
+        : const TimeOfDay(hour: 23, minute: 59);
+    final initialTime = current != null
+        ? TimeOfDay(hour: current.hour, minute: current.minute)
+        : fallbackTime;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+    );
+    if (pickedTime == null || !mounted) return;
+
+    setState(() {
+      final value = combineDateAndTime(
+        pickedDate,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+      if (isStart) {
+        _startDate = value;
+      } else {
+        _dueDate = value;
+      }
+    });
   }
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Chưa chọn';
-    return formatDate(date, emptyText: 'Chưa chọn');
+    return formatDateTime(date, emptyText: 'Chưa chọn');
   }
 
   Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
 
     // Kiểm tra nhanh ở client; backend vẫn là nơi kiểm tra cuối cùng.
-    if (_startDate != null && _dueDate != null && _dueDate!.isBefore(_startDate!)) {
+    if (!isDueAfterStart(_startDate, _dueDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Hạn hoàn thành không được trước ngày bắt đầu'),
+          content: Text('Hạn hoàn thành phải sau ngày bắt đầu'),
           backgroundColor: Colors.red,
         ),
       );
@@ -241,7 +264,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ),
                     IconButton(
                       icon: const Icon(Icons.edit_calendar),
-                      onPressed: () => _pickDate(isStart: true),
+                      onPressed: () => _pickDateTime(isStart: true),
                     ),
                   ],
                 ),
@@ -263,7 +286,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                       ),
                     IconButton(
                       icon: const Icon(Icons.edit_calendar),
-                      onPressed: () => _pickDate(isStart: false),
+                      onPressed: () => _pickDateTime(isStart: false),
                     ),
                   ],
                 ),

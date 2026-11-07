@@ -21,6 +21,19 @@ async function findUserShare(taskId, userId) {
   return TaskShare.findOne({ taskId, userId });
 }
 
+// Hạn hoàn thành phải sau ngày bắt đầu (so sánh cả giờ/phút).
+// Bỏ qua khi thiếu một trong hai mốc hoặc chuỗi ngày không hợp lệ,
+// vì trường hợp đó Mongoose sẽ báo lỗi cast riêng.
+function isInvalidDateRange(startDate, dueDate) {
+  if (!startDate || !dueDate) return false;
+
+  const start = new Date(startDate).getTime();
+  const due = new Date(dueDate).getTime();
+  if (Number.isNaN(start) || Number.isNaN(due)) return false;
+
+  return due <= start;
+}
+
 // 1. Tạo công việc mới
 exports.createTask = async (req, res) => {
   try {
@@ -28,6 +41,10 @@ exports.createTask = async (req, res) => {
 
     if (!title || !title.trim()) {
       return res.status(400).json({ message: 'Tiêu đề công việc không được để trống' });
+    }
+
+    if (isInvalidDateRange(startDate, dueDate)) {
+      return res.status(400).json({ message: 'Hạn hoàn thành phải sau ngày bắt đầu' });
     }
 
     const newTask = await Task.create({
@@ -231,6 +248,13 @@ exports.updateTask = async (req, res) => {
     }
 
     const { title, description, category, priority, status, startDate, dueDate } = req.body;
+
+    // So sánh trên giá trị hiệu lực: nếu client chỉ đổi một mốc thì lấy mốc còn lại từ task.
+    const nextStartDate = startDate !== undefined ? startDate : task.startDate;
+    const nextDueDate = dueDate !== undefined ? dueDate : task.dueDate;
+    if (isInvalidDateRange(nextStartDate, nextDueDate)) {
+      return res.status(400).json({ message: 'Hạn hoàn thành phải sau ngày bắt đầu' });
+    }
 
     // Lưu giá trị cũ để biết có phát sinh sự kiện đổi hạn / hoàn thành không.
     const oldDueDate = task.dueDate;

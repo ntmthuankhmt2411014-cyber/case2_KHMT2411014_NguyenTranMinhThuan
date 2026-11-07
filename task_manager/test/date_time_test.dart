@@ -66,4 +66,44 @@ void main() {
       expect(DateTime.parse(iso!).isAtSameMomentAs(DateTime(2026, 11, 7)), isTrue);
     });
   });
+
+  group('combineDateAndTime', () {
+    test('giữ nguyên ngày và gắn giờ/phút được chọn', () {
+      final result = combineDateAndTime(DateTime(2026, 11, 7, 15, 30), 8, 5);
+
+      expect(result, DateTime(2026, 11, 7, 8, 5));
+    });
+
+    test('giữ đúng ngày khi giờ là 23:59', () {
+      final result = combineDateAndTime(DateTime(2026, 11, 7), 23, 59);
+
+      expect(result, DateTime(2026, 11, 7, 23, 59));
+    });
+  });
+
+  group('isDueAfterStart', () {
+    test('trả true khi thiếu một trong hai mốc', () {
+      expect(isDueAfterStart(null, DateTime(2026, 11, 7)), isTrue);
+      expect(isDueAfterStart(DateTime(2026, 11, 7), null), isTrue);
+      expect(isDueAfterStart(null, null), isTrue);
+    });
+
+    test('trả true khi hạn sau ngày bắt đầu', () {
+      expect(
+        isDueAfterStart(DateTime(2026, 11, 7, 8), DateTime(2026, 11, 7, 9)),
+        isTrue,
+      );
+    });
+
+    test('trả false khi hạn trùng hoặc trước ngày bắt đầu', () {
+      expect(
+        isDueAfterStart(DateTime(2026, 11, 7, 8), DateTime(2026, 11, 7, 8)),
+        isFalse,
+      );
+      expect(
+        isDueAfterStart(DateTime(2026, 11, 7, 9), DateTime(2026, 11, 7, 8)),
+        isFalse,
+      );
+    });
+  });
 }

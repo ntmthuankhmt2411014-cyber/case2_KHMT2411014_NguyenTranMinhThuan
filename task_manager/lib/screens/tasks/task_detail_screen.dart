@@ -224,7 +224,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   String _formatDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return 'Chưa thiết lập';
-    return formatDate(
+    return formatDateTime(
       parseLocalDate(dateStr),
       emptyText: 'Chưa thiết lập',
     );

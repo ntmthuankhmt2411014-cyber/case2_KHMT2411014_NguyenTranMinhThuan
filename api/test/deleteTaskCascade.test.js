@@ -5,6 +5,7 @@ const Task = require('../src/models/task.model');
 const TaskShare = require('../src/models/taskShare.model');
 const Notification = require('../src/models/notification.model');
 const EmailLog = require('../src/models/emailLog.model');
+const TaskActivity = require('../src/models/taskActivity.model');
 const taskController = require('../src/controllers/task.controller');
 
 // Dựng response giả để không cần Express/DB thật.
@@ -47,6 +48,9 @@ test('xóa công việc cũng xóa notification và email log liên quan', async
   EmailLog.deleteMany = async (filter) => {
     deletedFilters.emailLogs = filter;
   };
+  TaskActivity.deleteMany = async (filter) => {
+    deletedFilters.activities = filter;
+  };
 
   const res = fakeRes();
   await taskController.deleteTask(
@@ -58,4 +62,5 @@ test('xóa công việc cũng xóa notification và email log liên quan', async
   assert.deepEqual(deletedFilters.shares, { taskId });
   assert.deepEqual(deletedFilters.notifications, { taskId });
   assert.deepEqual(deletedFilters.emailLogs, { taskId });
+  assert.deepEqual(deletedFilters.activities, { taskId });
 });

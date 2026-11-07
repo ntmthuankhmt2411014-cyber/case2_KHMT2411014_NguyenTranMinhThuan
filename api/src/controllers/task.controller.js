@@ -3,8 +3,10 @@ const Task = require('../models/task.model');
 const TaskShare = require('../models/taskShare.model');
 const Notification = require('../models/notification.model');
 const EmailLog = require('../models/emailLog.model');
+const TaskActivity = require('../models/taskActivity.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const taskEventService = require('../services/taskEvent.service');
+const taskActivityService = require('../services/taskActivity.service');
 const {
   EVENT_TYPES,
   hasDueDateChanged,
@@ -34,6 +36,50 @@ function isInvalidDateRange(startDate, dueDate) {
   return due <= start;
 }
 
+// Các trường được theo dõi để ghi lịch sử khi cập nhật công việc.
+const TRACKED_FIELDS = [
+  'title',
+  'description',
+  'category',
+  'priority',
+  'status',
+  'startDate',
+  'dueDate',
+];
+
+// Chụp lại giá trị trước khi sửa để so sánh from/to.
+function snapshotTrackedFields(task) {
+  const snapshot = {};
+  for (const field of TRACKED_FIELDS) snapshot[field] = task[field];
+  return snapshot;
+}
+
+// Chuẩn hóa để so sánh: startDate/dueDate có thể là Date hoặc chuỗi ISO.
+function normalizeForComparison(field, value) {
+  if (value === null || value === undefined) return '';
+  if (field === 'startDate' || field === 'dueDate') {
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? String(value) : time;
+  }
+  return String(value);
+}
+
+// Trả về các trường thực sự thay đổi kèm giá trị cũ/mới.
+function buildFieldChanges(before, task) {
+  const changes = {};
+  for (const field of TRACKED_FIELDS) {
+    const oldValue = normalizeForComparison(field, before[field]);
+    const newValue = normalizeForComparison(field, task[field]);
+    if (oldValue !== newValue) {
+      changes[field] = {
+        from: before[field] === undefined ? null : before[field],
+        to: task[field] === undefined ? null : task[field],
+      };
+    }
+  }
+  return changes;
+}
+
 // 1. Tạo công việc mới
 exports.createTask = async (req, res) => {
   try {
@@ -60,6 +106,14 @@ exports.createTask = async (req, res) => {
     });
 
     const populated = await newTask.populate('createdBy', 'fullName email');
+
+    // Ghi lịch sử hoạt động; lỗi ghi log không làm hỏng việc tạo công việc.
+    await taskActivityService.logActivity({
+      taskId: newTask._id,
+      userId: req.user._id,
+      action: 'created',
+      details: { title: newTask.title },
+    });
 
     return res.status(201).json({
       message: 'Tạo công việc thành công',
@@ -259,6 +313,7 @@ exports.updateTask = async (req, res) => {
     // Lưu giá trị cũ để biết có phát sinh sự kiện đổi hạn / hoàn thành không.
     const oldDueDate = task.dueDate;
     const oldStatus = task.status;
+    const before = snapshotTrackedFields(task);
 
     if (title !== undefined) task.title = title.trim();
     if (description !== undefined) task.description = description;
@@ -269,6 +324,21 @@ exports.updateTask = async (req, res) => {
     if (dueDate !== undefined) task.dueDate = dueDate;
 
     await task.save();
+
+    // Ghi lịch sử hoạt động sau khi lưu thành công.
+    // Nếu có đổi trạng thái thì dùng action status_changed để UI hiển thị rõ.
+    const changes = buildFieldChanges(before, task);
+    if (Object.keys(changes).length > 0) {
+      const statusChanged = Object.prototype.hasOwnProperty.call(changes, 'status');
+      await taskActivityService.logActivity({
+        taskId: task._id,
+        userId: req.user._id,
+        action: statusChanged ? 'status_changed' : 'updated',
+        details: statusChanged
+          ? { from: before.status, to: task.status, changes }
+          : { changes },
+      });
+    }
 
     // Mỗi sự kiện trong try/catch riêng: lỗi email không chặn sự kiện còn lại
     // và không làm hỏng response cập nhật công việc.
@@ -336,6 +406,15 @@ exports.updateTaskStatus = async (req, res) => {
     task.status = status;
     await task.save();
 
+    if (oldStatus !== task.status) {
+      await taskActivityService.logActivity({
+        taskId: task._id,
+        userId: req.user._id,
+        action: 'status_changed',
+        details: { from: oldStatus, to: task.status },
+      });
+    }
+
     // Phát sự kiện hoàn thành giống endpoint PUT, để nút "Hoàn thành"
     // ở màn chi tiết và màn danh sách đều gửi thông báo/email.
     // Chỉ phát khi thực sự chuyển sang Completed, không phát khi bấm lặp.
@@ -387,6 +466,7 @@ exports.deleteTask = async (req, res) => {
       TaskShare.deleteMany({ taskId: task._id }),
       Notification.deleteMany({ taskId: task._id }),
       EmailLog.deleteMany({ taskId: task._id }),
+      TaskActivity.deleteMany({ taskId: task._id }),
     ]);
 
     return res.status(200).json({ message: 'Xóa công việc thành công' });

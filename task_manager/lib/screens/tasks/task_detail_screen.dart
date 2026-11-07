@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
 import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
+import '../notifications/email_log_screen.dart';
 import 'task_assign_screen.dart';
 import 'task_edit_screen.dart';
 import 'task_share_screen.dart';
@@ -90,6 +91,19 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (changed == true) {
       _fetchTask();
     }
+  }
+
+  // Chỉ creator thấy nút này; backend vẫn kiểm tra lại quyền.
+  Future<void> _openEmailLogs() async {
+    final task = _task;
+    if (task == null) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EmailLogScreen(taskId: task.id, taskTitle: task.title),
+      ),
+    );
   }
 
   // Xác nhận rồi xóa công việc. Chỉ creator thấy nút, backend kiểm tra lại quyền.
@@ -489,6 +503,15 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _openEmailLogs,
+                          icon: const Icon(Icons.history),
+                          label: const Text('Lịch sử email'),
+                        ),
                       ),
                     ],
                   ),

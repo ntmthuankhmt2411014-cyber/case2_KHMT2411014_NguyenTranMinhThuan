@@ -308,8 +308,26 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
     }
 
+    const oldStatus = task.status;
     task.status = status;
     await task.save();
+
+    // Phát sự kiện hoàn thành giống endpoint PUT, để nút "Hoàn thành"
+    // ở màn chi tiết và màn danh sách đều gửi thông báo/email.
+    // Chỉ phát khi thực sự chuyển sang Completed, không phát khi bấm lặp.
+    if (isTransitionToCompleted(oldStatus, task.status)) {
+      try {
+        await taskEventService.emitTaskEvent({
+          task,
+          actorId: req.user._id,
+          actorName: req.user.fullName,
+          eventType: EVENT_TYPES.TASK_COMPLETED,
+        });
+      } catch (error) {
+        console.error('Lỗi gửi thông báo hoàn thành:', error);
+      }
+    }
+
     const populated = await task.populate('createdBy', 'fullName email');
 
     return res.status(200).json({

@@ -1,8 +1,13 @@
 const TaskShare = require('../models/taskShare.model');
 const User = require('../models/user.model');
+const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
 const emailService = require('./email.service');
-const { buildEventContent, resolveRecipientIds } = require('../utils/notificationEvents');
+const {
+  buildEventContent,
+  resolveRecipientIds,
+  EVENT_TYPES,
+} = require('../utils/notificationEvents');
 
 const EMPTY_RESULT = { recipientCount: 0, notificationCount: 0, emailCount: 0 };
 
@@ -77,6 +82,17 @@ async function emitTaskEvent({
   targetUserIds = [],
   permission,
 }) {
+  // Mỗi công việc chỉ gửi thông báo hoàn thành một lần trong vòng đời của nó.
+  // Dùng notification đã tồn tại làm cờ "đã báo" để không phát lại khi người dùng
+  // mở lại công việc (Completed → InProgress) rồi hoàn thành lần nữa.
+  if (eventType === EVENT_TYPES.TASK_COMPLETED) {
+    const alreadyNotified = await Notification.exists({
+      taskId: task._id,
+      type: EVENT_TYPES.TASK_COMPLETED,
+    });
+    if (alreadyNotified) return { ...EMPTY_RESULT };
+  }
+
   const shareUserIds = await TaskShare.find({ taskId: task._id }).distinct('userId');
 
   const recipientIds = resolveRecipientIds({

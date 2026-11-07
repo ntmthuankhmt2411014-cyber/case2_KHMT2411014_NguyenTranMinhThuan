@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../models/task.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
+import '../../utils/date_time.dart';
 import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
 import '../notifications/email_log_screen.dart';
@@ -224,12 +224,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   String _formatDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return 'Chưa thiết lập';
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('dd/MM/yyyy').format(date);
-    } catch (_) {
-      return dateStr;
-    }
+    return formatDate(
+      parseLocalDate(dateStr),
+      emptyText: 'Chưa thiết lập',
+    );
   }
 
   Future<void> _updateStatus(String newStatus) async {

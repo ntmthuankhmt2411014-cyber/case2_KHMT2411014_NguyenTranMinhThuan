@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../models/task.dart';
 import '../../services/task_api_service.dart';
+import '../../utils/date_time.dart';
 
 // Màn hình chỉnh sửa công việc.
 // Nhận Task đã có dữ liệu để điền sẵn vào form, sau đó gọi PUT /tasks/:id.
@@ -46,8 +46,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   }
 
   DateTime? _parseDate(String? value) {
-    if (value == null || value.isEmpty) return null;
-    return DateTime.tryParse(value);
+    return parseLocalDate(value);
   }
 
   @override
@@ -79,7 +78,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Chưa chọn';
-    return DateFormat('dd/MM/yyyy').format(date);
+    return formatDate(date, emptyText: 'Chưa chọn');
   }
 
   Future<void> _handleSave() async {
@@ -106,9 +105,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           : _categoryController.text.trim(),
       'priority': _priority,
       'status': _status,
-      // Gửi null để xóa ngày nếu người dùng bấm nút xóa.
-      'startDate': _startDate?.toIso8601String(),
-      'dueDate': _dueDate?.toIso8601String(),
+      // Gửi UTC để server hiểu đúng thời điểm; null để xóa ngày nếu người dùng bấm nút xóa.
+      'startDate': toUtcIsoString(_startDate),
+      'dueDate': toUtcIsoString(_dueDate),
     });
 
     setState(() => _isLoading = false);

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../services/task_api_service.dart';
+import '../../utils/date_time.dart';
 
 class TaskCreateScreen extends StatefulWidget {
   const TaskCreateScreen({super.key});
@@ -52,7 +52,7 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Chưa chọn';
-    return DateFormat('dd/MM/yyyy').format(date);
+    return formatDate(date, emptyText: 'Chưa chọn');
   }
 
   Future<void> _handleCreate() async {
@@ -66,8 +66,8 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
       category: _categoryController.text.trim().isEmpty ? 'Other' : _categoryController.text.trim(),
       priority: _priority,
       status: _status,
-      startDate: _startDate?.toIso8601String(),
-      dueDate: _dueDate?.toIso8601String(),
+      startDate: toUtcIsoString(_startDate),
+      dueDate: toUtcIsoString(_dueDate),
     );
 
     setState(() => _isLoading = false);

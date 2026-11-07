@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/task_api_service.dart';
+import '../utils/date_time.dart';
 import 'notifications/notification_screen.dart';
 import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
@@ -212,12 +212,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   String _formatDate(String? dateStr) {
     if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('dd/MM/yyyy').format(date);
-    } catch (_) {
-      return '';
-    }
+    return formatDate(parseLocalDate(dateStr));
   }
 
   // Chuyển trạng thái nhanh

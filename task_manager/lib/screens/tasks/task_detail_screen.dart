@@ -27,6 +27,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Task? _task;
   bool _isLoading = true;
   bool _isDeleting = false;
+  bool _taskMissing = false;
   String? _error;
   String? _currentUserId;
 
@@ -142,12 +143,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _taskMissing = false;
     });
 
     try {
       final task = await _apiService.getTaskById(widget.taskId);
       setState(() {
         _task = task;
+        _isLoading = false;
+      });
+    } on TaskNotFoundException {
+      // Công việc đã bị xóa (ví dụ từ thông báo cũ); hiển thị thông báo riêng.
+      setState(() {
+        _task = null;
+        _taskMissing = true;
         _isLoading = false;
       });
     } catch (e) {
@@ -286,6 +295,30 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_taskMissing) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.delete_outline, size: 48, color: Colors.grey),
+              const SizedBox(height: 12),
+              const Text(
+                'Công việc đã bị xóa hoặc bạn không còn quyền truy cập.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Quay lại'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (_error != null) {

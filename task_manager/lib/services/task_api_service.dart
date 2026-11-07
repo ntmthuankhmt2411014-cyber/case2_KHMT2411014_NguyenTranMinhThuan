@@ -7,8 +7,24 @@ import '../models/task.dart';
 import '../models/task_share.dart';
 import '../utils/constants.dart';
 
+class TaskNotFoundException implements Exception {
+  final String message;
+
+  TaskNotFoundException([
+    this.message = 'Công việc không còn tồn tại hoặc đã bị xóa',
+  ]);
+
+  @override
+  String toString() => message;
+}
+
 class TaskApiService {
   String get baseUrl => AppConstants.baseUrl;
+
+  // Cho phép truyền client giả trong unit test (MockClient).
+  final http.Client _client;
+
+  TaskApiService({http.Client? client}) : _client = client ?? http.Client();
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -59,7 +75,7 @@ class TaskApiService {
 
     final uri = Uri.parse('$baseUrl/tasks').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
 
-    final response = await http
+    final response = await _client
         .get(uri, headers: await _authHeaders())
         .timeout(const Duration(seconds: 10));
 
@@ -92,7 +108,7 @@ class TaskApiService {
       if (startDate != null) body['startDate'] = startDate;
       if (dueDate != null) body['dueDate'] = dueDate;
 
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$baseUrl/tasks'),
             headers: await _authHeaders(),
@@ -114,9 +130,15 @@ class TaskApiService {
 
   // 3. Lấy chi tiết công việc
   Future<Task> getTaskById(String id) async {
-    final response = await http
+    final response = await _client
         .get(Uri.parse('$baseUrl/tasks/$id'), headers: await _authHeaders())
         .timeout(const Duration(seconds: 10));
+
+    // 404 nghĩa là công việc đã bị xóa hoặc không còn quyền truy cập.
+    // Ném exception riêng để màn hình hiển thị thông báo thân thiện.
+    if (response.statusCode == 404) {
+      throw TaskNotFoundException();
+    }
 
     if (response.statusCode != 200) {
       throw Exception('Không thể tải chi tiết công việc (${response.statusCode})');
@@ -129,7 +151,7 @@ class TaskApiService {
   // 4. Cập nhật công việc
   Future<Map<String, dynamic>> updateTask(String id, Map<String, dynamic> updates) async {
     try {
-      final response = await http
+      final response = await _client
           .put(
             Uri.parse('$baseUrl/tasks/$id'),
             headers: await _authHeaders(),
@@ -152,7 +174,7 @@ class TaskApiService {
   // 5. Cập nhật nhanh trạng thái
   Future<Map<String, dynamic>> updateTaskStatus(String id, String status) async {
     try {
-      final response = await http
+      final response = await _client
           .patch(
             Uri.parse('$baseUrl/tasks/$id/status'),
             headers: await _authHeaders(),
@@ -175,7 +197,7 @@ class TaskApiService {
   // 6. Xóa công việc
   Future<Map<String, dynamic>> deleteTask(String id) async {
     try {
-      final response = await http
+      final response = await _client
           .delete(Uri.parse('$baseUrl/tasks/$id'), headers: await _authHeaders())
           .timeout(const Duration(seconds: 10));
 
@@ -193,7 +215,7 @@ class TaskApiService {
 
   // 7. Lấy danh sách người được giao
   Future<List<TaskAssignee>> getAssignees(String taskId) async {
-    final response = await http
+    final response = await _client
         .get(
           Uri.parse('$baseUrl/tasks/$taskId/assignees'),
           headers: await _authHeaders(),
@@ -221,7 +243,7 @@ class TaskApiService {
         body['primaryAssigneeId'] = primaryAssigneeId;
       }
 
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$baseUrl/tasks/$taskId/assignees'),
             headers: await _authHeaders(),
@@ -238,7 +260,7 @@ class TaskApiService {
   // 9. Đặt người phụ trách chính
   Future<Map<String, dynamic>> setPrimaryAssignee(String taskId, String userId) async {
     try {
-      final response = await http
+      final response = await _client
           .patch(
             Uri.parse('$baseUrl/tasks/$taskId/assignees/$userId'),
             headers: await _authHeaders(),
@@ -255,7 +277,7 @@ class TaskApiService {
   // 10. Hủy giao việc cho một người
   Future<Map<String, dynamic>> removeAssignee(String taskId, String userId) async {
     try {
-      final response = await http
+      final response = await _client
           .delete(
             Uri.parse('$baseUrl/tasks/$taskId/assignees/$userId'),
             headers: await _authHeaders(),
@@ -270,7 +292,7 @@ class TaskApiService {
 
   // 11. Lấy danh sách người được chia sẻ
   Future<List<TaskShare>> getShares(String taskId) async {
-    final response = await http
+    final response = await _client
         .get(
           Uri.parse('$baseUrl/tasks/$taskId/shares'),
           headers: await _authHeaders(),
@@ -293,7 +315,7 @@ class TaskApiService {
     String permission,
   ) async {
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$baseUrl/tasks/$taskId/shares'),
             headers: await _authHeaders(),
@@ -317,7 +339,7 @@ class TaskApiService {
     String permission,
   ) async {
     try {
-      final response = await http
+      final response = await _client
           .patch(
             Uri.parse('$baseUrl/tasks/$taskId/shares/$shareId'),
             headers: await _authHeaders(),
@@ -334,7 +356,7 @@ class TaskApiService {
   // 14. Thu hồi quyền chia sẻ
   Future<Map<String, dynamic>> removeShare(String taskId, String shareId) async {
     try {
-      final response = await http
+      final response = await _client
           .delete(
             Uri.parse('$baseUrl/tasks/$taskId/shares/$shareId'),
             headers: await _authHeaders(),

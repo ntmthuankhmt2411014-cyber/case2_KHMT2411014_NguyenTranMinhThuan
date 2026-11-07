@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Task = require('../models/task.model');
 const TaskShare = require('../models/taskShare.model');
+const Notification = require('../models/notification.model');
+const EmailLog = require('../models/emailLog.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const taskEventService = require('../services/taskEvent.service');
 const {
@@ -337,8 +339,13 @@ exports.deleteTask = async (req, res) => {
     }
 
     await Task.findByIdAndDelete(req.params.id);
-    // Dọn dữ liệu chia sẻ của công việc vừa xóa để tránh bản ghi mồ côi
-    await TaskShare.deleteMany({ taskId: task._id });
+    // Dọn toàn bộ dữ liệu liên quan của công việc vừa xóa để tránh bản ghi mồ côi.
+    // Notification còn sót sẽ dẫn tới màn chi tiết 404 khi người dùng bấm vào.
+    await Promise.all([
+      TaskShare.deleteMany({ taskId: task._id }),
+      Notification.deleteMany({ taskId: task._id }),
+      EmailLog.deleteMany({ taskId: task._id }),
+    ]);
 
     return res.status(200).json({ message: 'Xóa công việc thành công' });
   } catch (error) {

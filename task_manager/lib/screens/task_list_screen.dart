@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../services/task_api_service.dart';
+import 'notifications/notification_screen.dart';
 import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
 import 'tasks/task_detail_screen.dart';
@@ -18,10 +22,15 @@ class TaskListScreen extends StatefulWidget {
 class _TaskListScreenState extends State<TaskListScreen> {
   final TaskApiService _apiService = TaskApiService();
   final AuthService _authService = AuthService();
+  final NotificationService _notificationService = NotificationService();
 
   List<Task> _tasks = [];
   bool _isLoading = true;
   String? _error;
+
+  // Số thông báo chưa đọc trên chuông AppBar và timer polling 30 giây.
+  int _unreadCount = 0;
+  Timer? _notificationTimer;
 
   // Bộ lọc hiện tại (null = "Tất cả")
   String? _filterScope; // created, assigned, shared
@@ -55,6 +64,32 @@ class _TaskListScreenState extends State<TaskListScreen> {
     super.initState();
     _loadCurrentUser();
     _loadTasks();
+    _loadUnreadCount();
+    _notificationTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _loadUnreadCount(),
+    );
+  }
+
+  // Lấy số thông báo chưa đọc; lỗi mạng thì bỏ qua im lặng.
+  Future<void> _loadUnreadCount() async {
+    try {
+      final count = await _notificationService.getUnreadCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = count);
+    } catch (_) {
+      // Không hiển thị lỗi để tránh làm phiền khi backend tạm ngắt.
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NotificationScreen()),
+    );
+    if (!mounted) return;
+    // Quay lại thì cập nhật badge ngay, không chờ lần polling kế tiếp.
+    _loadUnreadCount();
   }
 
   Future<void> _loadCurrentUser() async {
@@ -68,6 +103,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   @override
   void dispose() {
+    _notificationTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -508,6 +544,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
       appBar: AppBar(
         title: const Text('Danh sách công việc'),
         actions: [
+          IconButton(
+            tooltip: 'Thông báo',
+            onPressed: _openNotifications,
+            icon: Badge(
+              isLabelVisible: _unreadCount > 0,
+              label: Text(notificationBadgeLabel(_unreadCount)),
+              child: const Icon(Icons.notifications_none),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.sort),
             tooltip: 'Sắp xếp',

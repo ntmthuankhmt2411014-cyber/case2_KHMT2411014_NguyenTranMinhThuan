@@ -5,6 +5,7 @@ const User = require('../models/user.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const { resolvePrimaryAssignee } = require('../utils/assigneeRules');
 const taskEventService = require('../services/taskEvent.service');
+const taskActivityService = require('../services/taskActivity.service');
 const { EVENT_TYPES } = require('../utils/notificationEvents');
 
 const USER_FIELDS = 'fullName email avatarUrl';
@@ -121,6 +122,14 @@ exports.assignUsers = async (req, res) => {
     // Chỉ báo cho những người vừa được thêm, không báo lại người đã có sẵn.
     const addedIds = normalizedIds.filter((id) => !oldAssigneeIds.includes(id));
     if (addedIds.length > 0) {
+      // Ghi lịch sử hoạt động; lỗi ghi log không làm hỏng thao tác giao việc.
+      await taskActivityService.logActivity({
+        taskId: task._id,
+        userId: req.user._id,
+        action: 'assigned',
+        details: { userIds: addedIds, primaryAssigneeId: primary },
+      });
+
       try {
         await taskEventService.emitTaskEvent({
           task,
@@ -179,8 +188,19 @@ exports.setPrimaryAssignee = async (req, res) => {
       return res.status(400).json({ message: error.message });
     }
 
+    // Lưu người phụ trách cũ để ghi lịch sử from/to.
+    const oldPrimary = primaryIdOf(task);
     task.primaryAssigneeId = new mongoose.Types.ObjectId(primary);
     await task.save();
+
+    if (oldPrimary !== primary) {
+      await taskActivityService.logActivity({
+        taskId: task._id,
+        userId: req.user._id,
+        action: 'primary_changed',
+        details: { from: oldPrimary, to: primary },
+      });
+    }
 
     return res.status(200).json({
       message: 'Cập nhật người phụ trách chính thành công',
@@ -220,6 +240,13 @@ exports.removeAssignee = async (req, res) => {
     task.assigneeIds = remainingIds.map((id) => new mongoose.Types.ObjectId(id));
     task.primaryAssigneeId = primary ? new mongoose.Types.ObjectId(primary) : null;
     await task.save();
+
+    await taskActivityService.logActivity({
+      taskId: task._id,
+      userId: req.user._id,
+      action: 'assignee_removed',
+      details: { userId },
+    });
 
     return respondAssignees(res, task, 'Hủy giao việc thành công');
   } catch (error) {

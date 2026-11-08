@@ -5,6 +5,7 @@ const User = require('../models/user.model');
 const { getTaskAccess } = require('../utils/taskPermissions');
 const { validateSharePermission } = require('../utils/shareRules');
 const taskEventService = require('../services/taskEvent.service');
+const taskActivityService = require('../services/taskActivity.service');
 const { EVENT_TYPES } = require('../utils/notificationEvents');
 
 const SHARE_POPULATE = [
@@ -118,6 +119,14 @@ exports.shareUsers = async (req, res) => {
 
     // Chỉ báo cho người vừa được chia sẻ, kèm quyền họ nhận được.
     if (newShareIds.length > 0) {
+      // Ghi lịch sử hoạt động; lỗi ghi log không làm hỏng thao tác chia sẻ.
+      await taskActivityService.logActivity({
+        taskId: task._id,
+        userId: req.user._id,
+        action: 'shared',
+        details: { userIds: newShareIds, permission },
+      });
+
       try {
         await taskEventService.emitTaskEvent({
           task,
@@ -173,10 +182,18 @@ exports.updateSharePermission = async (req, res) => {
 
     // Lưu id dạng chuỗi trước khi populate vì populate sẽ thay userId bằng object.
     const shareUserId = String(share.userId);
+    const oldPermission = share.permission;
 
     share.permission = permission;
     await share.save();
     await share.populate(SHARE_POPULATE);
+
+    await taskActivityService.logActivity({
+      taskId: task._id,
+      userId: req.user._id,
+      action: 'permission_changed',
+      details: { userId: shareUserId, from: oldPermission, to: permission },
+    });
 
     // Đổi quyền cũng là một lần chia sẻ lại: báo cho người được đổi quyền.
     try {
@@ -222,6 +239,13 @@ exports.removeShare = async (req, res) => {
     if (!share) {
       return res.status(404).json({ message: 'Không tìm thấy chia sẻ' });
     }
+
+    await taskActivityService.logActivity({
+      taskId: task._id,
+      userId: req.user._id,
+      action: 'share_removed',
+      details: { userId: String(share.userId), permission: share.permission },
+    });
 
     return res.status(200).json({ message: 'Thu hồi quyền chia sẻ thành công' });
   } catch (error) {

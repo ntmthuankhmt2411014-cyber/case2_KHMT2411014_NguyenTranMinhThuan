@@ -13,7 +13,17 @@ import 'tasks/task_create_screen.dart';
 import 'tasks/task_detail_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
-  const TaskListScreen({super.key});
+  // Bộ lọc ban đầu khi màn hình được mở từ ô thống kê.
+  final String? initialScope;
+  final String? initialStatus;
+  final String? initialDueFilter;
+
+  const TaskListScreen({
+    super.key,
+    this.initialScope,
+    this.initialStatus,
+    this.initialDueFilter,
+  });
 
   @override
   State<TaskListScreen> createState() => _TaskListScreenState();
@@ -62,6 +72,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
   @override
   void initState() {
     super.initState();
+    // Áp dụng bộ lọc ban đầu (nếu có) trước khi tải danh sách.
+    _filterScope = widget.initialScope;
+    _filterStatus = widget.initialStatus;
+    _dueFilter = widget.initialDueFilter;
     _loadCurrentUser();
     _loadTasks();
     _loadUnreadCount();

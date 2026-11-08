@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../models/task_activity.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_api_service.dart';
 import '../../utils/date_time.dart';
 import '../../utils/task_permissions.dart';
 import '../../widgets/delete_task_dialog.dart';
+import '../../widgets/task_activity_timeline.dart';
 import '../notifications/email_log_screen.dart';
 import 'task_assign_screen.dart';
 import 'task_edit_screen.dart';
@@ -30,6 +32,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _taskMissing = false;
   String? _error;
   String? _currentUserId;
+
+  // Lịch sử hoạt động của công việc (mục E).
+  List<TaskActivity> _activities = [];
+  bool _activitiesLoading = true;
+  String? _activitiesError;
 
   // Quyền lấy từ server (myPermission); nếu thiếu thì tự suy ra từ dữ liệu task.
   // Backend vẫn kiểm tra lại quyền, UI chỉ hỗ trợ trải nghiệm.
@@ -152,17 +159,43 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         _task = task;
         _isLoading = false;
       });
+      // Tải lịch sử sau khi đã có công việc.
+      _loadActivities();
     } on TaskNotFoundException {
       // Công việc đã bị xóa (ví dụ từ thông báo cũ); hiển thị thông báo riêng.
       setState(() {
         _task = null;
         _taskMissing = true;
         _isLoading = false;
+        _activities = const [];
+        _activitiesLoading = false;
       });
     } catch (e) {
       setState(() {
         _error = e.toString();
         _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadActivities() async {
+    setState(() {
+      _activitiesLoading = true;
+      _activitiesError = null;
+    });
+
+    try {
+      final activities = await _apiService.getTaskActivities(widget.taskId);
+      if (!mounted) return;
+      setState(() {
+        _activities = activities;
+        _activitiesLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _activitiesError = e.toString();
+        _activitiesLoading = false;
       });
     }
   }
@@ -759,6 +792,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ],
                 ),
               ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Lịch sử hoạt động (mục E)
+            TaskActivityTimeline(
+              activities: _activities,
+              isLoading: _activitiesLoading,
+              error: _activitiesError,
+              onRetry: _loadActivities,
             ),
 
             const SizedBox(height: 24),

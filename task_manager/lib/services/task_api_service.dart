@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/task.dart';
+import '../models/task_activity.dart';
 import '../models/task_share.dart';
 import '../utils/constants.dart';
 
@@ -367,5 +368,31 @@ class TaskApiService {
     } catch (e) {
       return {'success': false, 'message': 'Không thể kết nối máy chủ: $e'};
     }
+  }
+
+  // 15. Lấy lịch sử hoạt động của công việc
+  Future<List<TaskActivity>> getTaskActivities(String taskId) async {
+    final response = await _client
+        .get(
+          Uri.parse('$baseUrl/tasks/$taskId/activities'),
+          headers: await _authHeaders(),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 404) {
+      throw TaskNotFoundException();
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Không thể tải lịch sử hoạt động (${response.statusCode})');
+    }
+
+    final data =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final List items = data['activities'] as List? ?? [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(TaskActivity.fromJson)
+        .toList();
   }
 }

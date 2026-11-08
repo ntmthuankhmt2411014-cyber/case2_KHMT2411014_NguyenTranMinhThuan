@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../models/statistics.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
-import '../../services/statistics_service.dart';
-import '../../widgets/task_statistics_card.dart';
 import '../auth/login_screen.dart';
-import '../task_list_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,66 +12,13 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
-  final _statisticsService = StatisticsService();
   User? _currentUser;
   bool _isLoading = true;
-
-  // Trạng thái riêng cho phần thống kê để lỗi thống kê không làm hỏng màn hình.
-  TaskStatusStatistics? _taskStats;
-  AssignmentStatistics? _assignmentStats;
-  DeadlineStatistics? _deadlineStats;
-  bool _statsLoading = true;
-  String? _statsError;
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
-    _loadStatistics();
-  }
-
-  Future<void> _loadStatistics() async {
-    setState(() {
-      _statsLoading = true;
-      _statsError = null;
-    });
-
-    try {
-      // Gọi 3 API song song để màn hình tải nhanh hơn.
-      final results = await Future.wait<Object>([
-        _statisticsService.getTaskStatistics(),
-        _statisticsService.getAssignmentStatistics(),
-        _statisticsService.getDeadlineStatistics(),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _taskStats = results[0] as TaskStatusStatistics;
-        _assignmentStats = results[1] as AssignmentStatistics;
-        _deadlineStats = results[2] as DeadlineStatistics;
-        _statsLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _statsError = e.toString();
-        _statsLoading = false;
-      });
-    }
-  }
-
-  // Mở danh sách công việc với bộ lọc ban đầu, quay lại thì tải lại thống kê.
-  Future<void> _openTaskList({String? status, String? dueFilter}) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TaskListScreen(
-          initialStatus: status,
-          initialDueFilter: dueFilter,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    _loadStatistics();
   }
 
   Future<void> _loadUserProfile() async {
@@ -407,20 +350,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 24),
-
-                  // Thống kê công việc (mục E)
-                  TaskStatisticsCard(
-                    isLoading: _statsLoading,
-                    error: _statsError,
-                    taskStats: _taskStats,
-                    assignmentStats: _assignmentStats,
-                    deadlineStats: _deadlineStats,
-                    onRetry: _loadStatistics,
-                    onOpenStatus: (status) => _openTaskList(status: status),
-                    onOpenDueFilter: (dueFilter) =>
-                        _openTaskList(dueFilter: dueFilter),
-                  ),
-                  const SizedBox(height: 8),
 
                   const Divider(),
                   const SizedBox(height: 8),

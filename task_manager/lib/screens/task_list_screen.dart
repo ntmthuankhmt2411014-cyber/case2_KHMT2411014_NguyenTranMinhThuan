@@ -8,28 +8,17 @@ import '../services/notification_service.dart';
 import '../services/task_api_service.dart';
 import '../utils/date_time.dart';
 import 'notifications/notification_screen.dart';
-import 'profile/profile_screen.dart';
 import 'tasks/task_create_screen.dart';
 import 'tasks/task_detail_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
-  // Bộ lọc ban đầu khi màn hình được mở từ ô thống kê.
-  final String? initialScope;
-  final String? initialStatus;
-  final String? initialDueFilter;
-
-  const TaskListScreen({
-    super.key,
-    this.initialScope,
-    this.initialStatus,
-    this.initialDueFilter,
-  });
+  const TaskListScreen({super.key});
 
   @override
-  State<TaskListScreen> createState() => _TaskListScreenState();
+  State<TaskListScreen> createState() => TaskListScreenState();
 }
 
-class _TaskListScreenState extends State<TaskListScreen> {
+class TaskListScreenState extends State<TaskListScreen> {
   final TaskApiService _apiService = TaskApiService();
   final AuthService _authService = AuthService();
   final NotificationService _notificationService = NotificationService();
@@ -72,10 +61,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
   @override
   void initState() {
     super.initState();
-    // Áp dụng bộ lọc ban đầu (nếu có) trước khi tải danh sách.
-    _filterScope = widget.initialScope;
-    _filterStatus = widget.initialStatus;
-    _dueFilter = widget.initialDueFilter;
     _loadCurrentUser();
     _loadTasks();
     _loadUnreadCount();
@@ -131,6 +116,20 @@ class _TaskListScreenState extends State<TaskListScreen> {
       _filterPriority = null;
       _dueFilter = null;
     });
+    await _loadTasks();
+  }
+
+  // Áp bộ lọc từ tab Thống kê. Xóa các filter khác để số dòng khớp số liệu.
+  Future<void> applyFilters({String? status, String? dueFilter}) async {
+    setState(() {
+      _filterScope = null;
+      _filterCreatorId = null;
+      _filterStatus = status;
+      _filterPriority = null;
+      _dueFilter = dueFilter;
+      _searchQuery = '';
+    });
+    _searchController.clear();
     await _loadTasks();
   }
 
@@ -571,16 +570,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Tải lại & bỏ lọc',
             onPressed: () => _reloadWithoutFilters(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Cá nhân & Tài khoản',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfileScreen()),
-              );
-            },
           ),
         ],
       ),

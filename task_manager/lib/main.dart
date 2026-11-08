@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
-import 'screens/task_list_screen.dart';
+import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
 
 void main() {
@@ -57,7 +57,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         final bool isLoggedIn = snapshot.data ?? false;
         if (isLoggedIn) {
-          return const TaskListScreen();
+          return const MainScreen();
         } else {
           return const LoginScreen();
         }
